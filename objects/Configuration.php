@@ -15,11 +15,20 @@ if (!class_exists('Configuration')) {
         }
 
         static function getTableName() {
-            return 'configurations';
+            global $global;
+            return $global['tablesPrefix'] . 'configurations_encoder';
         }
 
         function __construct() {
-            $this->load(1);
+            global $global;
+            try {
+                $this->load(1);
+            } catch (Exception $exc) {
+            }
+
+            if (empty($this->version)) {
+                $this->loadOld();
+            }
         }
 
         function getAllowedStreamersURL() {
@@ -66,12 +75,7 @@ if (!class_exists('Configuration')) {
         }
 
         function setAutodelete($autodelete) {
-            if (empty($autodelete) || strtolower($autodelete) === 'false') {
-                $autodelete = 0;
-            } else {
-                $autodelete = 1;
-            }
-            $this->autodelete = $autodelete;
+            $this->autodelete = (empty($autodelete) || strtolower($autodelete) === 'false') ? 0 : 1;
         }
 
         function currentVersionLowerThen($version) {
@@ -86,10 +90,11 @@ if (!class_exists('Configuration')) {
             return version_compare($version, $this->getVersion()) == 0;
         }
 
-        static function rewriteConfigFile() {
+        static function rewriteConfigFile($configurationVersion = 2) {
             global $global, $mysqlHost, $mysqlUser, $mysqlPass, $mysqlDatabase;
             $content = "<?php
-\$global['configurationVersion'] = 2;
+\$global['configurationVersion'] = {$configurationVersion};
+\$global['tablesPrefix'] = '{$global['tablesPrefix']}';
 \$global['webSiteRootURL'] = '{$global['webSiteRootURL']}';
 \$global['systemRootPath'] = '{$global['systemRootPath']}';
 \$global['webSiteRootPath'] = '" . (@$global['webSiteRootPath']) . "';
@@ -109,13 +114,13 @@ if (!class_exists('Configuration')) {
 /**
  * Do NOT change from here
  */
-if(empty(\$global['webSiteRootPath'])){
+if (empty(\$global['webSiteRootPath'])){
     preg_match('/https?:\/\/[^\/]+(.*)/i', \$global['webSiteRootURL'], \$matches);
-    if(!empty(\$matches[1])){
+    if (!empty(\$matches[1])){
         \$global['webSiteRootPath'] = \$matches[1];
     }
 }
-if(empty(\$global['webSiteRootPath'])){
+if (empty(\$global['webSiteRootPath'])){
     die('Please configure your webSiteRootPath');
 }
 
@@ -127,6 +132,23 @@ require_once \$global['systemRootPath'] . 'objects/include_config.php';
             fclose($fp);
         }
 
-    }
+        static function getOldConfig() {
+            global $global;
+            $sql = "SELECT * FROM configurations WHERE  id = 1 LIMIT 1";
+            $global['lastQuery'] = $sql;
+            $res = $global['mysqli']->query($sql);
+            return $res ? $res->fetch_assoc() : false;
+        }
 
+        protected function loadOld() {
+            $user = self::getOldConfig();
+            if (empty($user)) {
+                return false;
+            }
+            foreach ($user as $key => $value) {
+                $this->$key = $value;
+            }
+            return true;
+        }
+    }
 }

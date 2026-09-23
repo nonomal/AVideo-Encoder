@@ -4,54 +4,62 @@ require_once dirname(__FILE__) . '/../videos/configuration.php';
 require_once '../objects/Encoder.php';
 require_once '../objects/Login.php';
 
-if(empty($_POST['fileURI'])){
+session_write_close();
+
+if (empty($_POST['fileURI'])) {
     die("File URI Not found");
 }
 
-if(!empty($_POST['user']) && !empty($_POST['pass']) && !empty($_POST['notifyURL'])){
+if (!empty($_POST['user']) && !empty($_POST['pass']) && !empty($_POST['notifyURL'])) {
     error_log("login.json: Login::run");
     $error = "Sent Login variables try to login";
     if (isCommandLineInterface()) {
-        echo $error.PHP_EOL;
+        echo $error . PHP_EOL;
     }
     error_log($error);
-    Login::run($_POST['user'], $_POST['pass'], $_POST['notifyURL'], isCommandLineInterface()?false:true);
+    Login::run($_POST['user'], $_POST['pass'], $_POST['notifyURL'], isCommandLineInterface() ? false : true);
 }
 
 $e = new Encoder(@$_POST['id']);
-if(empty($e->getId())){
-    if(!Login::canUpload()){
-        $error = "This user can not upload files User=".Login::getStreamerUser()." URL=".Login::getStreamerURL();
+if (empty($e->getId())) {
+    if (!Login::canUpload()) {
+        $error = "This user can not upload files User=" . Login::getStreamerUser() . " URL=" . Login::getStreamerURL(). ' POST='.json_encode($_POST);
         if (isCommandLineInterface()) {
-            echo $error.PHP_EOL;
+            echo $error . PHP_EOL;
         }
         error_log($error);
         exit;
     }
-   if (!($streamers_id = Login::getStreamerId())) {
+    if (!($streamers_id = Login::getStreamerId())) {
         $error = "There is no streamer site";
         if (isCommandLineInterface()) {
-            echo $error.PHP_EOL;
+            echo $error . PHP_EOL;
         }
         error_log($error);
         exit;
     }
     $e->setStreamers_id($streamers_id);
     $s = new Streamer($streamers_id);
-    
+
     $path_parts = pathinfo($_POST['fileURI']);
-    if(empty($_POST['filename'])){
+    if (empty($_POST['filename'])) {
         $_POST['filename'] = $path_parts['basename'];
     }
-    
+
     $e->setFileURI($_POST['fileURI']);
+    if (!empty($_POST['videoDownloadedLink'])) {
+        $e->setVideoDownloadedLink($_POST['videoDownloadedLink']);
+    }
     $e->setFilename($_POST['filename']);
     $e->setTitle($path_parts['filename']);
     $e->setPriority($s->getPriority());
-    
-    if (!empty($_POST['audioOnly']) && $_POST['audioOnly']!=='false') {
-        if (!empty($_POST['spectrum']) && $_POST['spectrum']!=='false') {
-            $e->setFormats_idFromOrder(70); // video to spectrum [(6)MP4 to MP3] -> [(5)MP3 to spectrum] -> [(2)MP4 to webm] 
+
+    $fileExtension = strtolower(pathinfo($_POST['fileURI'], PATHINFO_EXTENSION));
+    if (in_array($fileExtension, Encoder::AUDIO_EXTENSIONS)) {
+        $e->setFormats_idFromOrder(89); //Audio to MP4
+    }else if (!empty($_POST['audioOnly']) && $_POST['audioOnly'] !== 'false') {
+        if (!empty($_POST['spectrum']) && $_POST['spectrum'] !== 'false') {
+            $e->setFormats_idFromOrder(70); // video to spectrum [(6)MP4 to MP3] -> [(5)MP3 to spectrum] -> [(2)MP4 to webm]
         } else {
             $e->setFormats_idFromOrder(71);
         }
@@ -60,14 +68,18 @@ if(empty($e->getId())){
     }
     $obj = new stdClass();
     $obj->videos_id = @$_POST['videos_id'];
-    // notify streamer if need
-    if(empty($obj->videos_id)){
+    // Carry the site-issued chunk-upload token so it round-trips back on chunk PUTs.
+    if (!empty($_POST['encoderChunkToken'])) {
+        $obj->encoderChunkToken = $_POST['encoderChunkToken'];
+    }
+    if (empty($obj->videos_id)) {
         $f = new Format($e->getFormats_id());
         $format = $f->getExtension();
-        
+        error_log("queue : Encoder::sendFile");
         $response = Encoder::sendFile('', 0, $format, $e);
+        error_log("queue : Encoder::sendFile done");
         //var_dump($response);exit;
-        if(!empty($response->response->video_id)){
+        if (!empty($response->response->video_id)) {
             $obj->videos_id = $response->response->video_id;
         }
         if (!empty($response->response->video_id_hash)) {
@@ -75,10 +87,27 @@ if(empty($e->getId())){
         }
     }
     $e->setReturn_vars(json_encode($obj));
+
+    error_log("queue: will save");
     $id = $e->save();
-}else{
-    $e->setStatus('queue');
+    error_log("queue: save done [$id]");
+} else {
+    if (in_array($e->getStatus(), [Encoder::STATUS_PACKING, Encoder::STATUS_TRANSFERRING], true)) {
+        http_response_code(409);
+        echo json_encode(['error' => true, 'msg' => 'Wait until the transfer has stopped before re-encoding.']);
+        exit;
+    }
+    Encoder::deleteEncodedOutputFiles($e->getId());
+    $e->setStatus(Encoder::STATUS_QUEUE);
     $id = $e->save();
+
+    $obj = Encoder::getVideosId($id);
+}
+if (empty($id)) {
+    _error_log('queue: could not save the encoding task');
+    http_response_code(500);
+    echo json_encode(['error' => true, 'msg' => 'Could not save the encoding task. Please retry.']);
+    exit;
 }
 // start queue now
 execRun();

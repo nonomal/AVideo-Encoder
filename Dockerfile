@@ -1,38 +1,120 @@
-# Based on the work of @hannah98, thanks for that!
-# https://github.com/hannah98/avideo-docker
-# Licensed under the terms of the CC-0 license, see
-# https://creativecommons.org/publicdomain/zero/1.0/deed
+FROM php:8.2-apache
 
-FROM php:7-apache
+LABEL maintainer="TRW <trw@acoby.de>" \
+      org.label-schema.schema-version="1.0" \
+      org.label-schema.version="1.1.0" \
+      org.label-schema.name="avideo-platform" \
+      org.label-schema.description="Audio Video Encoder" \
+      org.label-schema.url="https://github.com/WWBN/AVideo-Encoder" \
+      org.label-schema.vendor="WWBN"
 
-MAINTAINER TheAssassin <theassassin@assassinate-you.net>
+ARG DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && \
-    apt-get install -y wget git zip default-libmysqlclient-dev libbz2-dev libmemcached-dev libsasl2-dev libfreetype6-dev libicu-dev libjpeg-dev libmemcachedutil2 libpng-dev libxml2-dev mariadb-client ffmpeg libimage-exiftool-perl python curl python3-pip libzip-dev libonig-dev && \
-    docker-php-ext-configure gd --with-freetype=/usr/include --with-jpeg=/usr/include && \
-    docker-php-ext-install -j$(nproc) bcmath bz2 calendar exif gd gettext iconv intl mbstring mysqli opcache pdo_mysql zip && \
-    rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/* /root/.cache && \
-    a2enmod rewrite
+ENV SERVER_NAME=localhost
+ENV SERVER_URL=https://localhost/
 
-# patch to use non-root port
-RUN sed -i "s|Listen 80|Listen 8000|g" /etc/apache2/ports.conf && \
-    sed -i "s|:80|:8000|g" /etc/apache2/sites-available/* && \
-    echo "max_execution_time = 7200\npost_max_size = 10240M\nupload_max_filesize = 10240M\nmemory_limit = 512M" >> /usr/local/etc/php/php.ini
+ENV DB_MYSQL_HOST=database
+ENV DB_MYSQL_PORT=3306
+ENV DB_MYSQL_NAME=avideo
+ENV DB_MYSQL_USER=avideo
+ENV DB_MYSQL_PASSWORD=avideo
 
-RUN pip install -U youtube-dl
+ENV STREAMER_URL=https://localhost/
+ENV STREAMER_USER=admin
+ENV STREAMER_PASSWORD=password
+ENV STREAMER_PRIORITY=1
 
-RUN rm -rf /var/www/html/*
-COPY . /var/www/html
+ENV CREATE_TLS_CERTIFICATE=yes
+ENV TLS_CERTIFICATE_FILE=/etc/apache2/ssl/localhost.crt
+ENV TLS_CERTIFICATE_KEY=/etc/apache2/ssl/localhost.key
+ENV CONTACT_EMAIL=admin@localhost
 
-# fix permissions
-RUN chown -R www-data. /var/www/html
+ENV PHP_POST_MAX_SIZE=100M
+ENV PHP_UPLOAD_MAX_FILESIZE=100M
+ENV PHP_MAX_EXECUTION_TIME=7200
+ENV PHP_MEMORY_LIMIT=512M
 
-# create volume
-RUN install -d -m 0755 -o www-data -g www-data /var/www/html/videos
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      git \
+      zip \
+      mariadb-client \
+      default-libmysqlclient-dev \
+      libbz2-dev \
+      libmemcached-dev \
+      libsasl2-dev \
+      libfreetype6-dev \
+      libicu-dev \
+      libjpeg-dev \
+      libmemcachedutil2 \
+      libpng-dev \
+      libxml2-dev \
+      ffmpeg \
+      libimage-exiftool-perl \
+      curl \
+      python3 \
+      python3-pip \
+      libzip-dev \
+      libonig-dev \
+      wget \
+      libmagickwand-dev && \
+    docker-php-ext-configure gd --with-freetype --with-jpeg && \
+    docker-php-ext-install -j$(nproc) \
+      bcmath \
+      bz2 \
+      calendar \
+      exif \
+      gd \
+      gettext \
+      iconv \
+      intl \
+      mbstring \
+      mysqli \
+      opcache \
+      pdo_mysql \
+      zip && \
+    pecl install imagick && \
+    docker-php-ext-enable imagick && \
+    rm -rf \
+      /tmp/* \
+      /var/lib/apt/lists/* \
+      /var/tmp/* \
+      /root/.cache && \
+    a2enmod rewrite expires headers ssl && \
+    PIP_BREAK_FLAG=$(pip3 install --help 2>&1 | grep -q -- '--break-system-packages' && echo '--break-system-packages' || echo '') && \
+    pip3 install -U $PIP_BREAK_FLAG yt-dlp && \
+    (pip3 install -U $PIP_BREAK_FLAG curl_cffi || true) && \
+    rm -rf /var/www/html/*
 
-# set non-root user
-USER www-data
+COPY install /var/www/html/install
+COPY locale /var/www/html/locale
+COPY API /var/www/html/API
+COPY model /var/www/html/model
+COPY nbproject /var/www/html/nbproject
+COPY objects /var/www/html/objects
+ARG ENCODER_COMMIT=""
+RUN php -r '$sha = $argv[1]; if (preg_match("/^[a-f0-9]{40}$/D", $sha)) { file_put_contents("/var/www/html/objects/encoder-build.json", json_encode(["commit" => $sha, "version" => ""])); }' "$ENCODER_COMMIT"
+COPY update /var/www/html/update
+COPY view /var/www/html/view
+COPY .htaccess /var/www/html
+COPY CNAME /var/www/html
+COPY index.php /var/www/html
+COPY LICENSE /var/www/html
+COPY README.md /var/www/html
+COPY deploy/apache/000-default.conf /etc/apache2/sites-enabled/000-default.conf
+COPY deploy/docker-entrypoint /usr/local/bin/docker-entrypoint
+COPY deploy/wait-for-db.php /usr/local/bin/wait-for-db.php
+COPY node_modules /var/www/html/node_modules
 
-EXPOSE 8000
-
+RUN chown -R www-data /var/www/html && \
+    chmod 755 /usr/local/bin/docker-entrypoint && \
+    install -d -m 0755 -o www-data -g www-data /var/www/html/videos
 VOLUME ["/var/www/html/videos"]
+
+WORKDIR /var/www/html/
+
+EXPOSE 80
+EXPOSE 443
+
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint"]
+# This loopback-only probe must also work with the generated self-signed certificate.
+HEALTHCHECK --interval=60s --timeout=55s --start-period=1s CMD curl --insecure --noproxy '*' --fail --max-time 50 https://localhost/ || exit 1

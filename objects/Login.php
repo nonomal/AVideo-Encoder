@@ -1,4 +1,5 @@
 <?php
+
 header('Set-Cookie: cross-site-cookie=name; SameSite=None; Secure');
 if (!class_exists('Login')) {
     require_once dirname(__FILE__) . '/../videos/configuration.php';
@@ -6,54 +7,34 @@ if (!class_exists('Login')) {
 
     class Login {
 
-        static function run($user, $pass, $aVideoURL, $encodedPass = false) {
-            ini_set('memory_limit', '50M');
-            ini_set('max_execution_time', 10);
-            error_log("Login::run ($user, ***, $aVideoURL, $encodedPass)");
-            global $global;
-            $agent = getSelfUserAgent();
-            $aVideoURL = trim($aVideoURL);
-            if (substr($aVideoURL, -1) !== '/') {
-                $aVideoURL .= "/";
+        private static function modifyUrl($url) {
+            $url = str_ireplace(array('rtmp://'), array(''), $url);
+            $url = str_ireplace(array('https://https://'), array('https://'), $url);
+            if (strpos($url, '/live?p=') !== false) {
+                $parsedUrl = parse_url($url);
+                $path = isset($parsedUrl['path']) ? $parsedUrl['path'] : '';
+
+                // Remove everything after the last '/' before '/live?p='
+                $path = substr($path, 0, strrpos($path, '/live?p='));
+
+                return $parsedUrl['scheme'] . '://' . $parsedUrl['host'] . $path . '/';
             }
+            return $url;
+        }
 
-            $postdata = http_build_query(
-                    array(
-                        'user' => $user,
-                        'pass' => $pass,
-                        'encodedPass' => $encodedPass
-                    )
-            );
+        static function run(
+            $user,
+            #[\SensitiveParameter]
+            $pass,
+            $aVideoURL,
+            $encodedPass = false
+        ) {
+            global $_runLogin, $global;
+            $aVideoURL = self::modifyUrl($aVideoURL);
 
-            $opts = array(
-                "ssl" => array(
-                    "verify_peer" => false,
-                    "verify_peer_name" => false,
-                    "allow_self_signed" => true
-                ),
-                'http' => array(
-                    'method' => 'POST',
-                    'header' => array(
-                        "Content-type: application/x-www-form-urlencoded\r\n",
-                        "User-Agent: {$agent}\r\n"),
-                    'content' => $postdata
-                ),
-            );
-
-            $context = stream_context_create($opts);
-            $url = $aVideoURL . 'login?user='. urlencode($user).'&pass='. urlencode($pass).'&encodedPass='. urlencode($encodedPass);
-            //echo $url;exit;
-            error_log("Login::run request login user ($user)");
-            $result = url_get_contents($url, $context);
-            error_log("Login::run request login complete user ($user)");
-            if (empty($result)) {
-                error_log("Get Login fail, try again user ($user)");
-                $result = url_get_contents($url, $context);
-            }
-
-
-            //error_log("Login::run response: ($result)");
-            if (empty($result)) {
+            if (empty(getExternalHttpUrlForShell($aVideoURL, 'Login::run'))) {
+                error_log("Login::run blocked by URL safety validation. URL=({$aVideoURL}) allowPrivateNetworkURLs=" . (!empty($global['allowPrivateNetworkURLs']) ? 'true' : 'false'));
+                _session_start();
                 $object = new stdClass();
                 $object->streamer = false;
                 $object->streamers_id = 0;
@@ -66,48 +47,144 @@ if (!class_exists('Login')) {
                 $object->theme = '';
                 $object->categories = array();
                 $object->userGroups = array();
-                error_log("Login::run Error on Login context");
-                error_log($url);
-                //error_log($result);
-            } else {
-                $result = remove_utf8_bom($result);
-                $object = json_decode($result);
-                if (!empty($object)) {
-                    error_log("Login::run got an object");
-                    $object->streamer = $aVideoURL;
-                    $object->streamers_id = 0;
-                    if (!empty($object->canUpload)) {
-                        $object->streamers_id = Streamer::createIfNotExists($user, $pass, $aVideoURL, $encodedPass);
-                    }
-                    if ($object->streamers_id) {
-                        $s = new Streamer($object->streamers_id);
-                        $resultV = $s->verify();
-                        if (!empty($resultV) && !$resultV->verified) {
-                            error_log("Error on Login not verified");
-                            return false;
-                        }
-
-                        $object->isStreamerAdmin = $object->isAdmin;
-                        $object->isAdmin = $s->getIsAdmin();
-                        if (!$encodedPass || $encodedPass === 'false') {
-                            $pass = encryptPassword($pass, $aVideoURL);
-                        }
-                        // update pass
-                        $s->setPass($object->pass);
-                        $s->save();
-                        $cookieLife = time() + 3600 * 24 * 2; // 2 day
-                        setcookie("encoder_user", $user, $cookieLife, "/");
-                        setcookie("encoder_pass", $pass, $cookieLife, "/");
-                        setcookie("aVideoURL", $aVideoURL, $cookieLife, "/");
-                        error_log("Login:: almost done");
-                    }
-                } else {
-                    $object = new stdClass();
-                    error_log("Encoder Login Error: " . json_error() );
-                }
+                $object->PHPSESSID = session_id();
+                $object->error = 'blocked_by_url_safety_validation';
+                $_SESSION['login'] = $object;
+                return;
             }
-            $object->aVideoURL = $url;
-            $object->result = $result;
+
+            $index = "$user, $pass, $aVideoURL";
+            if (!isset($_runLogin)) {
+                $_runLogin = array();
+            }
+            if (empty($_runLogin[$index])) {
+                // Decode HTML entities in username (e.g. &oacute; -> ó) to handle
+                // special characters sent from remote AVideo sites
+                $user = html_entity_decode($user, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                ini_set('memory_limit', '50M');
+                ini_set('max_execution_time', 10);
+                error_log("Login::run ($user, ***, $aVideoURL, $encodedPass)");
+                global $global;
+                $agent = getSelfUserAgent();
+                $aVideoURL = trim($aVideoURL);
+                if (substr($aVideoURL, -1) !== '/') {
+                    $aVideoURL .= "/";
+                }
+                $postdata = http_build_query(
+                        array(
+                            'user' => $user,
+                            'pass' => $pass,
+                            'encodedPass' => $encodedPass
+                        )
+                );
+
+                // Por padrão, não verifica SSL (true). Somente verifica se explicitamente setado para false
+                $disableSSLVerification = !isset($global['disableSSLVerification']) || $global['disableSSLVerification'] !== false;
+                $opts = array(
+                    "ssl" => array(
+                        "verify_peer" => !$disableSSLVerification,
+                        "verify_peer_name" => !$disableSSLVerification,
+                        "allow_self_signed" => $disableSSLVerification
+                    ),
+                    'http' => array(
+                        'method' => 'POST',
+                        'header' => array(
+                            "Content-type: application/x-www-form-urlencoded\r\n",
+                            "User-Agent: {$agent}\r\n"),
+                        'content' => $postdata
+                    ),
+                );
+
+                $context = stream_context_create($opts);
+                $url = $aVideoURL . 'login?user=' . urlencode($user) . '&pass=' . urlencode($pass) . '&encodedPass=' . urlencode($encodedPass);
+
+                //echo $url;exit;
+                error_log("Login::run request login user ($user)");
+                $result = url_get_contents($url, $context);
+                error_log("Login::run request login complete user ($user)");
+                if (empty($result)) {
+                    error_log("Get Login fail, try again user ($user)");
+                    $result = url_get_contents($url);
+                }
+
+                //error_log("Login::run response: ($result)");
+                if (empty($result)) {
+                    $object = new stdClass();
+                    $object->streamer = false;
+                    $object->streamers_id = 0;
+                    $object->isLogged = false;
+                    $object->isStreamerAdmin = false;
+                    $object->isAdmin = false;
+                    $object->canUpload = false;
+                    $object->canComment = false;
+                    $object->canCreateCategory = false;
+                    $object->theme = '';
+                    $object->categories = array();
+                    $object->userGroups = array();
+                    error_log("Login::run Error on Login context");
+                    error_log($url);
+                    //error_log($result);
+                } else {
+                    $result = remove_utf8_bom($result);
+                    $object = json_decode($result);
+                    if (!empty($object)) {
+                        error_log("Login::run got an object");
+                        if(!empty($object->streamer)){
+                            $object->streamerDetails = $object->streamer;
+                        }else{
+                            $object->streamerDetails = false;
+                        }
+                        $object->streamer = $aVideoURL;
+                        $object->streamers_id = 0;
+                        if (!empty($object->canUpload) || !empty($object->isAdmin)) {
+                            $object->streamers_id = Streamer::createIfNotExists($user, $pass, $aVideoURL, $encodedPass);
+                        }
+                        if ($object->streamers_id) {
+                            $s = new Streamer($object->streamers_id);
+                            $resultV = $s->verify();
+                            if (!empty($resultV) && !$resultV->verified) {
+                                $verificationMessage = '';
+                                if (!empty($resultV->msg)) {
+                                    $verificationMessage = is_array($resultV->msg) ? implode(' ', $resultV->msg) : (string) $resultV->msg;
+                                }
+                                $siteUnavailable = !empty($resultV->isPrivate)
+                                    || preg_match('/does not respond|not accessible|unreachable|timed out|timeout|could not connect|connection failed/i', $verificationMessage);
+                                if (!$siteUnavailable) {
+                                    error_log("Error on Login not verified");
+                                    return false;
+                                }
+                                error_log("Verification unavailable; allowing login for {$aVideoURL}: {$verificationMessage}");
+                            }
+
+                            $object->isStreamerAdmin = $object->isAdmin;
+                            $object->isAdmin = $s->getIsAdmin();
+                            if (!$encodedPass || $encodedPass === 'false') {
+                                $pass = encryptPassword($pass, $aVideoURL);
+                            }
+                            // update pass
+                            $s->setPass($object->pass);
+                            $s->save();
+                            // Only set cookies for browser requests; CLI workers do not need headers.
+                            if (!isCommandLineInterface() && !headers_sent()) {
+                                $cookieLife = time() + 3600 * 24 * 2; // 2 day
+                                setcookie("encoder_user", $user, $cookieLife, "/");
+                                setcookie("encoder_pass", $pass, $cookieLife, "/");
+                                setcookie("aVideoURL", $aVideoURL, $cookieLife, "/");
+                            } else {
+                                error_log("Login::run skip setcookie (cli=" . (isCommandLineInterface() ? 'true' : 'false') . ", headers_sent=" . (headers_sent() ? 'true' : 'false') . ")");
+                            }
+                            error_log("Login:: almost done");
+                        }
+                    } else {
+                        $object = new stdClass();
+                        error_log("Encoder Login Error: " . json_error()." $result");
+                    }
+                }
+                $object->aVideoURL = $url;
+                $object->result = '';
+            } else {
+                $object = $_runLogin[$index];
+            }
             _session_start();
             $object->PHPSESSID = session_id(); // to allow cross domain logins
             $_SESSION['login'] = $object;
@@ -117,15 +194,22 @@ if (!class_exists('Login')) {
         static function logoff() {
             error_log("logoff:: done session_id = " . session_id());
             unset($_SESSION['login']);
-            setcookie('encoder_user', null, -1, "/");
-            setcookie('encoder_pass', null, -1, "/");
+            if (!isCommandLineInterface() && !headers_sent()) {
+                setcookie('encoder_user', '', -1, "/");
+                setcookie('encoder_pass', '', -1, "/");
+            }
             unset($_COOKIE['encoder_user']);
             unset($_COOKIE['encoder_pass']);
         }
 
         static function isLogged() {
+            global $global;
             $isLogged = !empty($_SESSION['login']->isLogged);
             if (!$isLogged && !empty($_COOKIE['encoder_user']) && !empty($_COOKIE['encoder_pass']) && !empty($_COOKIE['encoder_aVideoURL'])) {
+                if (!Streamer::isURLAllowed($_COOKIE['encoder_aVideoURL']) || empty(getExternalHttpUrlForShell($_COOKIE['encoder_aVideoURL'], 'Login::isLogged cookie URL'))) {
+                    error_log("Login::isLogged blocked cookie auto-login by URL validation. URL=(" . $_COOKIE['encoder_aVideoURL'] . ") allowPrivateNetworkURLs=" . (!empty($global['allowPrivateNetworkURLs']) ? 'true' : 'false'));
+                    return false;
+                }
                 error_log("isLogged: Login::run");
                 Login::run($_COOKIE['encoder_user'], $_COOKIE['encoder_pass'], $_COOKIE['encoder_aVideoURL'], true);
             } else if (!$isLogged && !empty($_SESSION['login'])) {
@@ -141,14 +225,20 @@ if (!class_exists('Login')) {
         static function isAdmin() {
             return !empty($_SESSION['login']->isAdmin);
         }
-        
+
         static function isStreamerAdmin() {
             return !empty($_SESSION['login']->isStreamerAdmin);
         }
 
         static function canBulkEncode() {
             global $global;
-            if (self::isAdmin() || empty($global['disableBulkEncode'])) {
+            if (!self::isLogged()) {
+                return false;
+            }
+            if (self::isAdmin()) {
+                return true;
+            }
+            if (empty($global['disableBulkEncode']) && self::canUpload()) {
                 return true;
             }
             return false;
@@ -156,35 +246,28 @@ if (!class_exists('Login')) {
 
         static function canUpload() {
             //error_log("canUpload: ". json_encode($_SESSION['login']));
-            return self::isAdmin() || (self::isLogged() && !empty($_SESSION['login']->canUpload));
+            return self::isAdmin() || self::isStreamerAdmin() || (self::isLogged() && !empty($_SESSION['login']->canUpload));
         }
 
         static function canStream() {
             //error_log("canUpload: ". json_encode($_SESSION['login']));
-            return self::isAdmin() || (self::isLogged() && !empty($_SESSION['login']->canStream));
+            return self::isAdmin() || self::isStreamerAdmin() || (self::isLogged() && !empty($_SESSION['login']->canStream));
         }
 
         static function canComment() {
             return !empty($_SESSION['login']->canComment);
         }
-        
+
         static function canCreateCategory() {
-            return !empty($_SESSION['login']->canCreateCategory);
+            return self::isStreamerAdmin() || !empty($_SESSION['login']->canCreateCategory);
         }
-        
+
         static function getTheme() {
             return !empty($_SESSION['login']->theme);
         }
 
         static function getStreamerURL() {
-            if (!static::isLogged()) {
-                return Streamer::getFirstURL();;
-            }
-            global $global;
-            if (!empty($global['forceStreamerSiteURL'])) {
-                return $global['forceStreamerSiteURL'];
-            }
-            return $_SESSION['login']->streamer;
+            return Streamer::getStreamerURL();;
         }
 
         static function getStreamerUser() {
@@ -194,7 +277,7 @@ if (!class_exists('Login')) {
             global $global;
             return $_SESSION['login']->user;
         }
-        
+
         static function getStreamerPass() {
             if (!static::isLogged()) {
                 return false;
@@ -212,11 +295,103 @@ if (!class_exists('Login')) {
 
         static function getStreamerId() {
             if (!static::isLogged()) {
-                return false;
+                return 0;
             }
-            return $_SESSION['login']->streamers_id;
+            return intval($_SESSION['login']->streamers_id);
         }
 
-    }
+        /**
+         * Get allowed resolutions for the logged user from login session
+         * @return array|null Array of allowed resolutions or null if not set
+         */
+        static function getAllowedResolutions($streamersId) {
+            _error_log("Login::getAllowedResolutions - isLogged: " . json_encode(static::isLogged()));
+            $sessionLogin = $_SESSION['login'] ?? null;
+            if (is_object($sessionLogin)) {
+                $sessionSummary = array(
+                    'isLogged' => !empty($sessionLogin->isLogged),
+                    'streamers_id' => isset($sessionLogin->streamers_id) ? intval($sessionLogin->streamers_id) : 0,
+                    'hasAllowedResolutions' => isset($sessionLogin->allowedResolutions),
+                    'allowedResolutionsCount' => (isset($sessionLogin->allowedResolutions) && is_array($sessionLogin->allowedResolutions)) ? count($sessionLogin->allowedResolutions) : 0,
+                    'canUpload' => !empty($sessionLogin->canUpload),
+                    'isAdmin' => !empty($sessionLogin->isAdmin)
+                );
+            } else {
+                $sessionSummary = 'no session';
+            }
+            _error_log("Login::getAllowedResolutions - Session login summary: " . json_encode($sessionSummary));
+
+            // First, check if we have a logged user with valid allowedResolutions
+            if (static::isLogged() && !empty($_SESSION['login']->allowedResolutions) && is_array($_SESSION['login']->allowedResolutions)) {
+                _error_log("Login::getAllowedResolutions - Found allowedResolutions: " . json_encode($_SESSION['login']->allowedResolutions));
+                return $_SESSION['login']->allowedResolutions;
+            }
+
+            // If user is not logged in OR allowedResolutions is null/empty, try to re-login using database streamer credentials
+            if (!static::isLogged()) {
+                _error_log("Login::getAllowedResolutions - User not logged in, attempting re-login with database credentials");
+            } else {
+                _error_log("Login::getAllowedResolutions - allowedResolutions is null, attempting re-login with database credentials");
+            }
+
+            if (self::retryLoginWithDatabaseCredentials($streamersId)) {
+                // After re-login, check again for allowedResolutions
+                if (static::isLogged() && !empty($_SESSION['login']->allowedResolutions) && is_array($_SESSION['login']->allowedResolutions)) {
+                    _error_log("Login::getAllowedResolutions - Found allowedResolutions after re-login: " . json_encode($_SESSION['login']->allowedResolutions));
+                    return $_SESSION['login']->allowedResolutions;
+                }
+            }
+
+            _error_log("Login::getAllowedResolutions - No allowedResolutions found even after re-login attempt");
+            return null;
+        }
+
+        /**
+         * Attempt to re-login using database streamer credentials
+         * @return bool True if re-login was successful, false otherwise
+         */
+        private static function retryLoginWithDatabaseCredentials($streamersId) {
+            try {
+                if (!$streamersId) {
+                    _error_log("Login::retryLoginWithDatabaseCredentials - No streamers_id found");
+                    return false;
+                }
+
+                // Load streamer from database
+                require_once __DIR__ . '/Streamer.php';
+                $streamer = new Streamer($streamersId);
+                if (!$streamer->getId()) {
+                    _error_log("Login::retryLoginWithDatabaseCredentials - Streamer not found in database: $streamersId");
+                    return false;
+                }
+
+                $user = $streamer->getUser();
+                $pass = $streamer->getPass(); // This should be the encoded password
+                $streamerURL = $streamer->getStreamerURL();
+
+                if (empty($user) || empty($pass) || empty($streamerURL)) {
+                    _error_log("Login::retryLoginWithDatabaseCredentials - Missing credentials: user=$user, pass=" . (empty($pass) ? 'empty' : 'set') . ", url=$streamerURL");
+                    return false;
+                }
+
+                _error_log("Login::retryLoginWithDatabaseCredentials - Attempting re-login with user: $user, url: $streamerURL");
+
+                // Perform login with encoded password
+                self::run($user, $pass, $streamerURL, true);
+
+                // Check if login was successful and we now have allowedResolutions
+                if (self::isLogged() && isset($_SESSION['login']->allowedResolutions)) {
+                    _error_log("Login::retryLoginWithDatabaseCredentials - Re-login successful");
+                    return true;
+                }
+
+                _error_log("Login::retryLoginWithDatabaseCredentials - Re-login failed or no allowedResolutions returned");
+                return false;
+
+            } catch (Exception $e) {
+                _error_log("Login::retryLoginWithDatabaseCredentials - Exception: " . $e->getMessage());
+                return false;
+            }
+        }    }
 
 }

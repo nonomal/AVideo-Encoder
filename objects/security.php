@@ -2,15 +2,12 @@
 
 require_once $global['systemRootPath'] . 'objects/functions.php';
 
-
 // filter some security here
 $securityFilter = array('error', 'catName', 'type', 'channelName', 'captcha', 'showOnly', 'key', 'link', 'email', 'country', 'region', 'videoName');
 $securityFilterInt = array('isAdmin', 'priority', 'totalClips', 'rowCount');
 $securityRemoveSingleQuotes = array('search', 'searchPhrase', 'videoName', 'databaseName', 'sort', 'user', 'pass', 'encodedPass', 'isAdmin', 'videoLink', 'video_password');
 $securityRemoveNonChars = array('resolution', 'format', 'videoDirectory');
 $filterURL = array('videoURL', 'siteURL', 'redirectUri', 'encoderURL');
-
-
 
 if (!empty($_FILES)) {
     foreach ($_FILES as $key => $value) {
@@ -23,15 +20,21 @@ $scanVars = array('GET', 'POST', 'REQUEST');
 foreach ($scanVars as $value) {
     eval('$scanThis = &$_' . $value . ';');
     if (!empty($scanThis['base64Url'])) {
-        if (!filter_var(base64_decode($scanThis['base64Url']), FILTER_VALIDATE_URL)) {
-            _error_log('base64Url attack ' . json_encode($_SERVER), AVideoLog::$SECURITY);
+        $decodedUrl = base64_decode($scanThis['base64Url']);
+        if (!filter_var($decodedUrl, FILTER_VALIDATE_URL)) {
+            error_log('base64Url attack ' . json_encode($_SERVER));
+            exit;
+        }
+        // Security: reject URLs containing shell metacharacters
+        if (preg_match('/[`$;|&(){}<>\\\\\\n\\r\\0]/', $decodedUrl)) {
+            error_log('base64Url shell injection attempt ' . json_encode($_SERVER));
             exit;
         }
     }
 
     foreach ($filterURL as $key => $value) {
         if (!empty($scanThis[$value])) {
-            if (!filter_var($scanThis[$value], FILTER_VALIDATE_URL) || !preg_match("/^http.*/i", $scanThis[$value])) {
+            if (!filter_var($scanThis[$value], FILTER_VALIDATE_URL) || !preg_match("/^(http|ftp).*/i", $scanThis[$value])) {
                 //_error_log($value.' attack ' . json_encode($_SERVER), AVideoLog::$SECURITY);
                 unset($scanThis[$value]);
             } else {
@@ -44,11 +47,11 @@ foreach ($scanVars as $value) {
     foreach ($securityRemoveNonChars as $value) {
         if (!empty($scanThis[$value])) {
             if (is_string($scanThis[$value])) {
-                $scanThis[$value] = str_replace('/[^a-z0-9./]/i', '', trim($scanThis[$value]));
+                $scanThis[$value] = preg_replace('/[^a-z0-9.\/]/i', '', trim($scanThis[$value]));
             } elseif (is_array($scanThis[$value])) {
                 foreach ($scanThis[$value] as $key => $value2) {
                     if (is_string($scanThis[$value][$key])) {
-                        $scanThis[$value][$key] = str_replace('/[^a-z0-9./]/i', '', trim($scanThis[$value][$key]));
+                        $scanThis[$value][$key] = preg_replace('/[^a-z0-9.\/]/i', '', trim($scanThis[$value][$key]));
                     }
                 }
             }
@@ -73,15 +76,15 @@ foreach ($scanVars as $value) {
     // all variables with _id at the end will be forced to be interger
     foreach ($scanThis as $key => $value) {
         if (preg_match('/_id$/i', $key)) {
-            if(empty($value)){
+            if (empty($value)){
                 $scanThis[$key] = 0;
-            }else 
+            }else
             if (is_numeric($value)) {
                 $scanThis[$key] = intval($value);
             } else {
-                if(is_string($value)){
+                if (is_string($value)){
                     $json = json_decode($value);
-                    if(empty($json)){
+                    if (empty($json)){
                         $json = json_decode("[$value]");
                     }
                 }else{

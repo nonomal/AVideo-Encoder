@@ -1,15 +1,18 @@
 <div class="container-fluid">
-            <div class="alert alert-success"><?php printf("You are running AVideo Encoder version %s!", $config->getVersion()); ?></div>
+            <?php
+            $encoderUpdateFiles = getUpdatesFiles();
+            include __DIR__ . '/software.php';
+            ?>
             <?php
             if (empty($_POST['updateFile'])) {
-                $updateFiles = getUpdatesFiles();
+                $updateFiles = $encoderUpdateFiles;
                 if (!empty($updateFiles)) {
                     ?>
                     <div class="alert alert-warning">
-                        <form method="post" class="form-compact well form-horizontal" >
+                        <form method="post" class="form-compact well form-horizontal">
                             <fieldset>
-                                <legend>Update AVideo System</legend>
-                                <label for="updateFile" class="sr-only">Select the update</label>
+                                <legend><?php echo __('Update AVideo System'); ?></legend>
+                                <label for="updateFile" class="sr-only"><?php echo __('Select the update'); ?></label>
                                 <select class="selectpicker" data-width="fit" name="updateFile" id="updateFile" required autofocus>
                                     <?php
                                     foreach ($updateFiles as $value) {
@@ -17,9 +20,9 @@
                                     }
                                     ?>
                                 </select>
-                                <?php printf("We detected a total of %s pending updates, if you want to do it now click (Update Now) button", "<strong class='badge'>" . count($updateFiles) . "</strong>"); ?>
+                                <?php printf(__('We detected a total of %s pending updates, if you want to do it now click (Update Now) button'), "<strong class='badge'>" . count($updateFiles) . "</strong>"); ?>
                                 <hr>
-                                <button type="submit" class="btn btn-warning btn-lg center-block " href="?update=1" > <span class="glyphicon glyphicon-refresh"></span> Update Now </button>
+                                <button type="submit" class="btn btn-warning btn-lg center-block" href="?update=1"> <span class="glyphicon glyphicon-refresh"></span> <?php echo __('Update Now'); ?> </button>
                             </fieldset>
                         </form>
                     </div>
@@ -29,12 +32,6 @@
                             //$('#updateFile').selectpicker();
                         });
                     </script>
-                    <?php
-                } else {
-                    ?>
-                    <div class="alert alert-success">
-                        <h2>Your system is up to date</h2>
-                    </div>
                     <?php
                 }
             } else {
@@ -47,23 +44,39 @@
                         continue;
                     $templine .= $line;
                     if (substr(trim($line), -1, 1) == ';') {
-                        if (!$global['mysqli']->query($templine)) {
-                            $obj->error = ('Error performing query \'<strong>' . $templine . '\': ' . $global['mysqli']->error . '<br /><br />');
-                            echo json_encode($obj);
-                            //exit;
+                        if(!empty($global['tablesPrefix'])){
+                            $templine = addPrefixIntoQuery($templine, $global['tablesPrefix']);
+                        }
+                        try {
+                            if (!$global['mysqli']->query($templine)) {
+                                throw new mysqli_sql_exception($global['mysqli']->error, $global['mysqli']->errno);
+                            }
+                        } catch (mysqli_sql_exception $e) {
+                            // Early fresh installs already had retry_count but were recorded as 8.1.
+                            $retryCountQuery = 'ALTER TABLE `' . ($global['tablesPrefix'] ?? '') . 'encoder_queue` ADD COLUMN `retry_count` INT NOT NULL DEFAULT 0;';
+                            if ($e->getCode() !== 1060 || $_POST['updateFile'] !== 'updateDb.v8.2.sql' || trim($templine) !== $retryCountQuery) {
+                                _error_log('Encoder database update failed: ' . $e->getMessage());
+                                $obj->error = __('Update failed. Check the server error log and try again.');
+                                break;
+                            }
                         }
                         $templine = '';
                     }
                 }
 
-                //$renamed = rename("{$global['systemRootPath']}updateDb.sql", "{$global['systemRootPath']}updateDb.sql.old");
                 ?>
+                <?php if (!empty($obj->error)) { ?>
+                <div class="alert alert-danger">
+                    <?php echo htmlspecialchars($obj->error, ENT_QUOTES, 'UTF-8'); ?>
+                </div>
+                <?php } else { ?>
                 <div class="alert alert-success">
                     <?php
-                    printf("Your update from file %s is done, click continue", $_POST['updateFile']);
+                    printf(__('Your update from file %s is done, click continue'), $_POST['updateFile']);
                     ?><hr>
-                    <a class="btn btn-success" href="?done=1" > <span class="glyphicon glyphicon-ok"></span> Continue </a>
+                    <a class="btn btn-success" href="?done=1"> <span class="glyphicon glyphicon-ok"></span> <?php echo __('Continue'); ?> </a>
                 </div>
+                <?php } ?>
                 <?php
             }
             ?></div>

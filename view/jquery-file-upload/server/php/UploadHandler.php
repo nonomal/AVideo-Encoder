@@ -411,6 +411,7 @@ class UploadHandler
             return false;
         }
         if (!preg_match($this->options['accept_file_types'], $file->name)) {
+            //var_dump($file->name, $this->options['accept_file_types']);
             $file->error = $this->get_error_message('accept_file_types');
             return false;
         }
@@ -1239,7 +1240,12 @@ class UploadHandler
 
     protected function get_file_name_param() {
         $name = $this->get_singular_param_name();
-        return $this->basename(stripslashes($this->get_query_param($name)));
+        $param = $this->get_query_param($name);
+        if(empty($param)){
+            $param = '';
+            //var_dump($name);
+        }
+        return $this->basename(stripslashes($param));
     }
 
     protected function get_file_names_params() {
@@ -1332,11 +1338,16 @@ class UploadHandler
         $this->response = $content;
         if ($print_response) {
             $json = json_encode($content);
-            $redirect = stripslashes($this->get_post_param('redirect'));
+            $redirect = '';
+            $post = $this->get_post_param('redirect');
+            if(!empty($post)){
+                $redirect = stripslashes($post);
+            }
+
             if ($redirect && preg_match($this->options['redirect_allow_target'], $redirect)) {
                 return $this->header('Location: '.sprintf($redirect, rawurlencode($json)));
             }
-            $this->head();
+            $this->head();//var_dump($_FILES);
             if ($this->get_server_var('HTTP_CONTENT_RANGE')) {
                 $files = isset($content[$this->options['param_name']]) ?
                     $content[$this->options['param_name']] : null;
@@ -1411,7 +1422,7 @@ class UploadHandler
                 foreach ($upload['tmp_name'] as $index => $value) {
                     $files[] = $this->handle_file_upload(
                         $upload['tmp_name'][$index],
-                        $file_name ? $file_name : $upload['name'][$index],
+                        $file_name ? $file_name : @$upload['name'][$index],
                         $size ? $size : $upload['size'][$index],
                         $upload['type'][$index],
                         $upload['error'][$index],
@@ -1465,8 +1476,8 @@ class UploadHandler
         return $this->generate_response($response, $print_response);
     }
 
-    protected function basename($filepath, $suffix = null) {
-        $splited = preg_split('/\//', rtrim ($filepath, '/ '));
-        return substr(basename('X'.$splited[count($splited)-1], $suffix), 1);
+    protected function basename($filepath, $suffix = '') {
+        $split = preg_split('/\//', rtrim ($filepath, '/ '));
+        return substr(basename('X' . $split[count($split) - 1], $suffix), 1);
     }
 }

@@ -6,8 +6,11 @@ require_once '../videos/configuration.php';
 if (!isCommandLineInterface()) {
     return die('Command Line only');
 }
-
-$sql = "UPDATE encoder_queue SET status = 'queue' where id > 0";
+/**
+ * @var array $global
+ * @var object $global['mysqli']
+ */
+$sql = "UPDATE {$global['tablesPrefix']}encoder_queue SET status = 'queue' where id > 0";
 echo $sql . PHP_EOL;
 $insert_row = $global['mysqli']->query($sql);
 
@@ -19,7 +22,3 @@ if ($insert_row) {
 echo "Bye";
 echo "\n";
 die();
-
-
-
-

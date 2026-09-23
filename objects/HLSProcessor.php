@@ -1,0 +1,296 @@
+<?php
+
+class HLSProcessor
+{
+
+    // Persists a short human-readable stage so the queue UI's status_obs box can
+    // show what's happening during the long pre-processing steps that run before
+    // the main ffmpeg command starts writing to the real progress file.
+    private static function setStage($encoder, $msg)
+    {
+        if (empty($encoder)) {
+            return;
+        }
+        _error_log("HLSProcessor: stage: {$msg}");
+        Encoder::nextStage($encoder, $msg);
+    }
+
+    static function createMP3AndPM4IfNeed($pathFileName, $destinationFile, $encoder = null)
+    {
+        global $global;
+
+        $advancedCustom = getAdvancedCustomizedObjectData();
+        $encoder_queue_id = !empty($encoder) ? $encoder->getId() : 0;
+        //_error_log('createMP3AndPM4IfNeed '.json_encode($advancedCustom));
+        if ($advancedCustom->autoConvertToMp4) {
+            self::setStage($encoder, "Auto-converting to MP4...");
+            try {
+                // Passing the queue id routes ffmpeg's own progress lines into the same
+                // file the UI already polls for %, so this step isn't just a static label.
+                MP4Processor::createMP4($pathFileName, $destinationFile . 'index.mp4', $encoder_queue_id);
+            } catch (Exception $e) {
+                _error_log("Error creating MP4: " . $e->getMessage());
+            }
+        }
+        if ($advancedCustom->autoConvertVideosToMP3) {
+            // Usage example
+            self::setStage($encoder, "Auto-converting to MP3...");
+            try {
+                MP3Processor::createMP3($pathFileName, $destinationFile . 'index.mp3', $encoder_queue_id);
+            } catch (Exception $e) {
+                _error_log("Error creating MP3: " . $e->getMessage());
+            }
+        }
+    }
+
+    public static function createHLSWithAudioTracks($pathFileName, $destinationFile, $encoder_queue_id)
+    {
+        global $global;
+        $encoder = new Encoder($encoder_queue_id);
+        $streamersId = $encoder->getStreamers_id();
+        self::setStage($encoder, "Analyzing source video (resolution, audio tracks)...");
+        // Detect video resolution and audio tracks
+        $resolution = self::getResolution($pathFileName);
+        $audioTracks = self::getAudioTracks($pathFileName); // Detect audio tracks
+        $encoderConfig = Format::loadEncoderConfiguration($streamersId);
+        $resolutions = $encoderConfig['resolutions'];
+        $bandwidth = $encoderConfig['bandwidth'];
+        $videoFramerate = $encoderConfig['videoFramerate'];
+        $parts = pathinfo($destinationFile);
+        $destinationFile = "{$parts["dirname"]}/{$parts["filename"]}/";
+
+        // Log and create output directory
+        _error_log("HLSProcessor: createHLSWithAudioTracks($pathFileName, $destinationFile) [resolutions=" . json_encode($resolutions) . "][audioTracks=" . json_encode($audioTracks) . "] [height={$resolution}] [$destinationFile=$destinationFile]");
+        mkdir($destinationFile);
+        mkdir($destinationFile . 'audio_tracks');
+
+        // Check if the key and keyinfo files already exist
+        $keyFileName = null;
+        $keyInfoFile = $destinationFile . "keyinfo";
+
+        if (file_exists($keyInfoFile)) {
+            // Reuse existing keyinfo and key
+            _error_log("HLSProcessor: createHLSWithAudioTracks Reusing existing key and keyinfo");
+            $keyFileName = basename(file($keyInfoFile)[0]); // Extract key filename from keyinfo
+        } else {
+            // Create encryption key
+            _error_log("HLSProcessor: createHLSWithAudioTracks Creating new encryption key and keyinfo");
+            $key = openssl_random_pseudo_bytes(16);
+            $keyFileName = "enc_" . uniqid() . ".key";
+            file_put_contents($destinationFile . $keyFileName, $key);
+
+            // Create keyinfo file for HLS encryption
+            $str = "../{$keyFileName}" . PHP_EOL;
+            $str .= "{$destinationFile}{$keyFileName}";
+            file_put_contents($keyInfoFile, $str);
+        }
+
+        // Initialize the master playlist content
+        $masterPlaylist = "#EXTM3U" . PHP_EOL;
+        $masterPlaylist .= "#EXT-X-VERSION:3" . PHP_EOL;
+
+        self::createMP3AndPM4IfNeed($pathFileName, $destinationFile, $encoder);
+
+        $audioGroupAvailable = false;
+        $totalAudioTracks = count($audioTracks);
+        // Generate separate audio-only HLS streams for each audio track
+        foreach ($audioTracks as $key => $track) {
+            $language = isset($track->language) ? $track->language : "lang" . ($track->index + 1); // Assign language name, customize as needed
+
+            $langDir = preg_replace('/[^a-z0-9_-]/i', '', $language);
+
+            mkdir("{$destinationFile}audio_tracks/{$langDir}");
+
+            $audioFile = "{$destinationFile}audio_tracks/{$langDir}/audio.m3u8";
+            $audioTsPattern = "{$destinationFile}audio_tracks/{$langDir}/audio_%03d.ts"; // Pattern for audio .ts segments
+
+            self::setStage($encoder, "Extracting audio track " . ($key + 1) . "/{$totalAudioTracks} ({$language})...");
+
+            // Correctly map the audio track and add VOD parameters
+            $audioCommand = get_ffmpeg() . " -y -i {$pathFileName} "
+                . " -vn -map 0:a:{$track->index} "
+                . " -c:a aac -profile:a aac_low -ac 2 -ar 48000 -b:a 128k "
+                . " -f hls -hls_time 6 -hls_flags independent_segments+split_by_time "
+                . " -hls_playlist_type vod -hls_segment_type mpegts "
+                . " -hls_segment_filename \"{$audioTsPattern}\" {$audioFile}";
+
+            $audioCommand = removeUserAgentIfNotURL($audioCommand);
+            // Same progress file the queue UI already polls for %.
+            $progressFile = "{$global['systemRootPath']}videos/{$encoder_queue_id}_tmpFile_progress.txt";
+            _error_log("HLSProcessor: createHLSWithAudioTracks Executing audio FFmpeg command: {$audioCommand}");
+            exec("{$audioCommand} 1> \"{$progressFile}\" 2>&1", $output, $result_code); // Execute FFmpeg command
+
+            if (!file_exists($audioFile)) {
+                _error_log("HLSProcessor: createHLSWithAudioTracks audioFile error: {$audioCommand} " . json_encode(array($output)));
+                rmdir("{$destinationFile}audio_tracks/{$langDir}");
+                unset($audioTracks[$key]);
+            } else {
+                _error_log("HLSProcessor: createHLSWithAudioTracks audioFile Success");
+                // Add audio track entry to the master playlist
+                $default = ($track->index == 0) ? "YES" : "NO"; // Set first audio track as default
+                $masterPlaylist .= "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"audio_group\",NAME=\"{$track->title}\",LANGUAGE=\"{$language}\",DEFAULT={$default},AUTOSELECT=YES,URI=\"audio_tracks/{$langDir}/audio.m3u8\"" . PHP_EOL;
+                $audioGroupAvailable = true;
+            }
+        }
+
+        // AUDIO="audio_group" must only be referenced if an #EXT-X-MEDIA group was actually
+        // emitted above (e.g. source has no audio track at all) - otherwise it's a dangling
+        // reference and players may fail to find/play any audio.
+        $audioAttr = !empty($audioGroupAvailable) ? ",AUDIO=\"audio_group\"" : '';
+
+        $ffmpegCommand = '';
+        $resolutionsFound = 0;
+        // Generate HLS files for each resolution
+        foreach ($resolutions as $key => $value) {
+            if ($resolution >= $value) {
+                _error_log("HLSProcessor: createHLSWithAudioTracks Resolution found: {$value}");
+                $encodingSettings = Format::ENCODING_SETTINGS[$value];
+                $rate = $encodingSettings['maxrate']; // Use the maxrate from ENCODING_SETTINGS
+                $framerate = isset($videoFramerate[$key]) && $videoFramerate[$key] > 0 ? $videoFramerate[$key] : 30;
+                $dir = $destinationFile . "res{$value}/";
+                mkdir($dir);
+                $outputFile = "{$dir}index.m3u8";
+
+                // Add resolution playlist entry to the master playlist
+                $width = self::getScaledWidth($pathFileName, $value);
+                $masterPlaylist .= "#EXT-X-STREAM-INF:BANDWIDTH=" . ($rate * 1000) . ",RESOLUTION={$width}x{$value}{$audioAttr}" . PHP_EOL;
+
+                $masterPlaylist .= "res{$value}/index.m3u8" . PHP_EOL;
+
+                // Append FFmpeg command for this resolution
+                $ffmpegCommand .= self::getFFmpegCommandForResolution($pathFileName, $value, $rate, $framerate, $audioTracks, $keyInfoFile, $outputFile);
+
+                $resolutionsFound++;
+            } else {
+                _error_log("HLSProcessor: createHLSWithAudioTracks Skipped resolution {$value} for {$pathFileName} (video height is {$resolution})");
+            }
+        }
+
+        if (empty($resolutionsFound)) {
+            _error_log("HLSProcessor: createHLSWithAudioTracks Resolution found is empty");
+            // Use the lowest allowed resolution for the user as fallback
+            $fallbackResolution = !empty($resolutions) ? min($resolutions) : 240;
+            _error_log("HLSProcessor: createHLSWithAudioTracks Using fallback resolution: {$fallbackResolution}p (user allowed resolutions: " . json_encode($resolutions) . ")");
+
+            $encodingSettings = Format::ENCODING_SETTINGS[$fallbackResolution];
+            $rate = $encodingSettings['maxrate']; // Use the maxrate from ENCODING_SETTINGS
+            $framerate = isset($videoFramerate[0]) && $videoFramerate[0] > 0 ? $videoFramerate[0] : 30;
+            $dir = $destinationFile . "res{$fallbackResolution}/";
+            mkdir($dir);
+            $outputFile = "{$dir}index.m3u8";
+
+            // Add resolution playlist entry to the master playlist
+            $width = self::getScaledWidth($pathFileName, $fallbackResolution);
+            $masterPlaylist .= "#EXT-X-STREAM-INF:BANDWIDTH=" . ($rate * 1000) . ",RESOLUTION={$width}x{$fallbackResolution}{$audioAttr}" . PHP_EOL;
+
+            $masterPlaylist .= "res{$fallbackResolution}/index.m3u8" . PHP_EOL;
+
+            // Append FFmpeg command for this resolution
+            $ffmpegCommand .= self::getFFmpegCommandForResolution($pathFileName, $fallbackResolution, $rate, $framerate, $audioTracks, $keyInfoFile, $outputFile);
+
+            $resolutionsFound++;
+        }
+
+        $ffmpegCommand = get_ffmpeg() . " -i {$pathFileName} " . $ffmpegCommand;
+        $ffmpegCommand = removeUserAgentIfNotURL($ffmpegCommand);
+
+        // Write the master playlist to the destination file
+        file_put_contents($destinationFile . "index.m3u8", $masterPlaylist);
+        _error_log("HLSProcessor: createHLSWithAudioTracks Master playlist written to: {$destinationFile}index.m3u8");
+
+        self::setStage($encoder, "Starting video encoding (HLS, {$resolutionsFound} resolution(s))...");
+
+        return array($destinationFile, $ffmpegCommand);
+    }
+
+    // FFmpeg Command Generation for HLS with Audio Tracks for a Specific Resolution
+    private static function getFFmpegCommandForResolution($inputFile, $resolution, $bitrate, $framerate, $audioTracks, $keyInfoFile, $outputFile)
+    {
+        // Force a keyframe every 6 seconds to match segment boundaries
+        // Also set hls_flags=independent_segments+split_by_time
+        $forceKeyFrames = "expr:gte(t,n_forced*6)";
+
+        $command = " -force_key_frames \"{$forceKeyFrames}\" "
+            . " -vf scale=-2:{$resolution} -b:v {$bitrate}k -r {$framerate} "
+            . " -movflags +faststart "
+            . " -hls_time 6 "
+            . " -hls_flags independent_segments+split_by_time "
+            . " -hls_key_info_file {$keyInfoFile} "
+            . " -hls_playlist_type vod "
+            . " -map 0:v "
+            . " -c:v h264 -profile:v main -pix_fmt yuv420p "
+            . " -f hls {$outputFile}";
+
+        return $command;
+    }
+
+
+
+    // Function to get video resolution
+    private static function getResolution($pathFileName)
+    {
+        $command = get_ffprobe() . " -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 {$pathFileName}";
+        return (int) shell_exec($command);
+    }
+
+    // Public so Encoder::estimateTotalStages() can size the "Step X/Y" counter
+    // before this class's own pre-processing pipeline actually starts.
+    public static function countAudioTracks($pathFileName)
+    {
+        return count(self::getAudioTracks($pathFileName));
+    }
+
+    // Function to detect audio tracks and their metadata
+    private static function getAudioTracks($pathFileName)
+    {
+        $command = get_ffprobe() . " -v error -select_streams a -show_entries stream=index:stream_tags=language,title -of json {$pathFileName}";
+        $output = shell_exec($command);
+        $audioInfo = json_decode($output, true);
+
+        $tracks = [];
+        foreach ($audioInfo['streams'] as $index => $stream) {
+            $track = new stdClass();
+            $track->index = $index;
+            $track->language = isset($stream['tags']['language']) ? $stream['tags']['language'] : 'Default';
+            $track->title = isset($stream['tags']['title']) ? $stream['tags']['title'] : $track->language;
+
+            if ($track->language == 'und') {
+                $track->language = 'Default';
+            }
+            if ($track->title == 'und') {
+                $track->title = 'Default';
+            }
+            $tracks[] = $track;
+        }
+
+        return $tracks;
+    }
+
+    private static function getScaledWidth($pathFileName, $targetHeight)
+    {
+        $command = get_ffprobe() . " -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0:s=x {$pathFileName}";
+        $output = trim(shell_exec($command));
+
+        if (empty($output) || strpos($output, 'x') === false) {
+            _error_log("FFprobe failed to get dimensions: output=[$output], using default 16:9 fallback");
+            return self::getDefaultWidth($targetHeight);
+        }
+
+        list($originalWidth, $originalHeight) = explode('x', $output);
+
+        if (empty($originalWidth) || empty($originalHeight) || $originalHeight == 0) {
+            _error_log("Invalid dimensions received: width=[$originalWidth], height=[$originalHeight], using default 16:9 fallback");
+            return self::getDefaultWidth($targetHeight);
+        }
+
+        $width = intval(($targetHeight / $originalHeight) * $originalWidth);
+        return $width - ($width % 2);
+    }
+
+    private static function getDefaultWidth($targetHeight)
+    {
+        // 16:9 ratio → width = height * (16 / 9)
+        $width = intval($targetHeight * (16 / 9));
+        return $width - ($width % 2); // ensure even number
+    }
+}

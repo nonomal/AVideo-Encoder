@@ -2,7 +2,7 @@
 
 $scale_width = 1280;
 $scale_height = 720;
-//$ffmpegParameters = " -preset veryfast -vcodec h264 -acodec aac -strict -2 -max_muxing_queue_size 1024 -y -s {$scale_width}x{$scale_height}  -ar 44100";
+//$ffmpegParameters = " -preset veryfast -vcodec h264 -acodec aac  -max_muxing_queue_size 1024 -y -s {$scale_width}x{$scale_height}  -ar 44100";
 $ffmpegParameters = " -c:v libx264 -preset medium -b:v 3000k -maxrate 3000k -bufsize 6000k -vf \"scale={$scale_width}:{$scale_height},format=yuv420p\" -g 50 -c:a aac -b:a 128k -ac 2 -ar 44100 ";
 //$ffmpegParametersRTMP = "  -c copy ";
 //$ffmpegParametersRTMP = " -c:v libx264 -b:v 3000k -maxrate 3000k -bufsize 6000k -g 50 -c:a aac -b:a 128k -ac 2 -s {$scale_width}x{$scale_height}  -ar 44100  ";
@@ -11,8 +11,8 @@ $ffmpegParametersRTMP = " -c:v libx264 -b:v 3000k -maxrate 3000k -bufsize 6000k 
 $outputExtension = "flv";
 
 
-//$ffmpegParameters = " -preset veryfast  -vcodec h264 -acodec aac -strict -2 -max_muxing_queue_size 1024 -y -s {$scale_width}x{$scale_height}   -r 10 -ab 24k -ar 22050 -bsf:v h264_mp4toannexb -maxrate 750k -bufsize 3000k   -tune zerolatency ";
-//$ffmpegParameters = "  -strict -2  -max_muxing_queue_size 1024 -y -s {$scale_width}x{$scale_height}  -tune zerolatency ";
+//$ffmpegParameters = " -preset veryfast  -vcodec h264 -acodec aac  -max_muxing_queue_size 1024 -y -s {$scale_width}x{$scale_height}   -r 10 -ab 24k -ar 22050 -bsf:v h264_mp4toannexb -maxrate 750k -bufsize 3000k   -tune zerolatency ";
+//$ffmpegParameters = "    -max_muxing_queue_size 1024 -y -s {$scale_width}x{$scale_height}  -tune zerolatency ";
 
 $complexFilter1 = ' [{$counter}]setdar=16/9,scale='.$scale_width.':'.$scale_height.',fps=30[{$counter}:v]; ';
 $complexFilter2 = ' [{$counter}:v] [{$counter}:a] ';
@@ -47,12 +47,14 @@ $videosListToLivePath = $global['systemRootPath'] . 'videos/videosListToLive/';
 $dir = "{$videosListToLivePath}{$domain}/";
 make_path($dir);
 
-// clear all get 
+// clear all get
 foreach ($_REQUEST as $key => $value) {
-    if(empty($_REQUEST[$value])){
+    if (empty($_REQUEST[$value])) {
         continue;
     }
-    $_REQUEST[$value] = str_replace('/[^a-z0-9.:/-]/i', '', trim($_REQUEST[$value]));
+    if (is_string($_REQUEST[$value])) {
+        $_REQUEST[$value] = preg_replace('/[^a-z0-9.:\/\-]/i', '', trim($_REQUEST[$value]));
+    }
 }
 
 $obj->playlists_id = intval($_REQUEST['playlists_id']);
@@ -67,6 +69,14 @@ if (empty($obj->playlists_id)) {
 
 if (empty($APISecret)) {
     $obj->msg = "APISecret is empty";
+    die(json_encode($obj));
+}
+
+// This endpoint must only operate for known/allowed streamer URLs. It should
+// never bootstrap trust from arbitrary user-supplied hosts.
+$requestedStreamerURL = addLastSlash($_REQUEST['webSiteRootURL']);
+if (!Streamer::isURLAllowed($requestedStreamerURL) || !isRegisteredStreamerURL($requestedStreamerURL)) {
+    $obj->msg = "Streamer URL is not allowed";
     die(json_encode($obj));
 }
 
@@ -109,12 +119,12 @@ if (empty($json->response->videos)) {
 }
 //var_dump($json);
 $counter = 0;
-$videos = array();
+$videos = [];
 
-$ffmpegInputs = array();
-$ffmpegFilters1 = array();
-$ffmpegFilters2 = array();
-$videos = array();
+$ffmpegInputs = [];
+$ffmpegFilters1 = [];
+$ffmpegFilters2 = [];
+$videos = [];
 
 $timer = new stdClass();
 $timer->videos_id = -1;
@@ -134,25 +144,28 @@ foreach ($json->response->videos as $value) {
         continue;
     }
 
+    $safeInputPathArg = escapeshellarg($value->path);
+
     $timeStartVideo = microtime(true);
     $outputFile = "{$dir}video_{$value->videos_id}.{$outputExtension}";
+    $safeOutputFileArg = escapeshellarg($outputFile);
     _log("Processing video ($counter) ({$value->videos_id}) ({$value->title}) ($outputFile)");
     if ($directTransmit && !isAudio($value->path)) {
-        $ffmpegInputs[] = " -re -i \"{$value->path}\" ";
+        $ffmpegInputs[] = " -re -i {$safeInputPathArg} ";
         eval('$ffmpegFilters1[] = " ' . $complexFilter1 . ' ";');
         eval('$ffmpegFilters2[] = " ' . $complexFilter2 . ' ";');
         $videos[] = $value;
         $counter++;
-    } else if (!empty($recreateAllVideos) || !file_exists($outputFile)) {
+    } elseif (!empty($recreateAllVideos) || !file_exists($outputFile)) {
         if (isAudio($value->path)) {
-            $cmd = get_ffmpeg() . " -i \"{$value->path}\" -filter_complex '[0:a]showwaves=s={$scale_width}x{$scale_height}:mode=line,format=yuv420p[v]' -map '[v]' -map 0:a "
-                    . " {$ffmpegParameters} -y {$outputFile} ";
+            $cmd = get_ffmpeg() . " -i {$safeInputPathArg} -filter_complex '[0:a]showwaves=s={$scale_width}x{$scale_height}:mode=line,format=yuv420p[v]' -map '[v]' -map 0:a "
+                    . " {$ffmpegParameters} -y {$safeOutputFileArg} ";
         } else {
-            $cmd = get_ffmpeg() . " -i \"{$value->path}\" "
-                    . " {$ffmpegParameters} -y {$outputFile} ";
+            $cmd = get_ffmpeg() . " -i {$safeInputPathArg} "
+                    . " {$ffmpegParameters} -y {$safeOutputFileArg} ";
         }
         if (__exec($cmd)) {
-            $ffmpegInputs[] = " -re -i \"{$outputFile}\" ";
+            $ffmpegInputs[] = " -re -i {$safeOutputFileArg} ";
             eval('$ffmpegFilters1[] = " ' . $complexFilter1 . ' ";');
             eval('$ffmpegFilters2[] = " ' . $complexFilter2 . ' ";');
             $videos[] = $value;
@@ -161,7 +174,7 @@ foreach ($json->response->videos as $value) {
             _log("ERROR on video ($counter) ({$value->path})");
         }
     } else {
-        $ffmpegInputs[] = " -re -i \"{$outputFile}\" ";
+        $ffmpegInputs[] = " -re -i {$safeOutputFileArg} ";
         eval('$ffmpegFilters1[] = " ' . $complexFilter1 . ' ";');
         eval('$ffmpegFilters2[] = " ' . $complexFilter2 . ' ";');
         $videos[] = $value;
@@ -217,6 +230,7 @@ $timeLiveStart = microtime(true);
 _log("Live stream it now");
 
 $cmd = get_ffmpeg() . " " . implode(" ", $ffmpegInputs) . " ";
+
 if (!file_exists($warermark)) {
     $cmd .= " -filter_complex \"" . implode(" ", $ffmpegFilters1) . " " . implode(" ", $ffmpegFilters2) . " concat=n={$counter}:v=1:a=1:unsafe=1 [v] [a]\" -map \"[v]\" -map \"[a]\" ";
 } else {
@@ -228,6 +242,7 @@ $rtmpURL = "{$_SESSION['login']->streamServerURL}/{$_SESSION['login']->streamKey
 
 $cmd .= " {$ffmpegParametersRTMP} -f flv {$rtmpURL}";
 
+$cmd = removeUserAgentIfNotURL($cmd);
 
 _log("Create EPG");
 $channel = new stdClass();
@@ -244,7 +259,7 @@ $channel->playlists_id = $json->response->playlists_id;
 $channel->key = $_SESSION['login']->streamKey;
 $channel->live_servers_id = $obj->live_servers_id;
 $channel->embedlink = "{$channel->link}&embed=1";
-$channel->programme = array();
+$channel->programme = [];
 
 foreach ($videos as $value) {
     $programme = new stdClass();
@@ -296,13 +311,14 @@ $obj->error = false;
 
 die(json_encode($obj));
 
-function __exec($cmd, $async = false) {
+function __exec($cmd, $async = false)
+{
     _log($cmd);
     ob_flush();
     if (!$async) {
         if (isWindows()) {
             //$pid = system($command . " > NUL");
-            pclose($pid = popen("start /B ". $cmd, "r")); 
+            pclose($pid = popen("start /B ". $cmd, "r"));
             $return_val = 0;
         } else {
             $pid = exec($cmd . " > /dev/null 2>&1 & echo $!; ", $output, $return_val);
@@ -317,19 +333,22 @@ function __exec($cmd, $async = false) {
     }
 }
 
-function _log($msg) {
+function _log($msg)
+{
     global $logFile;
     error_log("videoListToLive: " . $msg);
     //echo "<hr>" . $msg . "<br>" . PHP_EOL;
     return file_put_contents($logFile, "[" . date("Y-m-d H:i:s") . "] " . $msg . PHP_EOL, FILE_APPEND);
 }
 
-function isAudio($source) {
+function isAudio($source)
+{
     return empty(isVideo($source));
 }
 
-function isVideo($source) {
-    $cmd = get_ffprobe()." -i \"{$source}\" -show_streams -select_streams v:0 -show_entries stream=width,height -loglevel error";
+function isVideo($source)
+{
+    $cmd = get_ffprobe()." -i " . escapeshellarg($source) . " -show_streams -select_streams v:0 -show_entries stream=width,height -loglevel error";
     exec($cmd . " 2>&1", $output, $return_val);
     $return = array("width" => 0, "height" => 0);
     if ($return_val !== 0) {
@@ -340,8 +359,7 @@ function isVideo($source) {
                 if (!empty($matches[1])) {
                     $return["width"] = intval($matches[1]);
                 }
-            } else
-            if (preg_match('/height=([0-9]+)/', $value, $matches)) {
+            } elseif (preg_match('/height=([0-9]+)/', $value, $matches)) {
                 if (!empty($matches[1])) {
                     $return["height"] = intval($matches[1]);
                 }
@@ -355,27 +373,50 @@ function isVideo($source) {
     return false;
 }
 
-function createWaterMark($webSiteRootURL, $path) {
+function isRegisteredStreamerURL($siteURL)
+{
+    global $global;
+    if (empty($siteURL) || empty($global['mysqli'])) {
+        return false;
+    }
+
+    $sql = "SELECT id FROM " . Streamer::getTableName() . " WHERE lower(siteURL) = lower(?) LIMIT 1";
+    $stmt = $global['mysqli']->prepare($sql);
+    if (empty($stmt)) {
+        return false;
+    }
+
+    $stmt->bind_param('s', $siteURL);
+    $stmt->execute();
+    $stmt->store_result();
+    $hasRow = $stmt->num_rows > 0;
+    $stmt->close();
+
+    return $hasRow;
+}
+
+function createWaterMark($webSiteRootURL, $path)
+{
     global $scale_width,$scale_height;
     $imgPath = "{$path}watermark.png";
     if (file_exists($imgPath)) {
         //return $imgPath;
     }
-    $backGround = imagecreatetruecolor($scale_width,$scale_height);
+    $backGround = imagecreatetruecolor($scale_width, $scale_height);
     imagesavealpha($backGround, true);
     $color = imagecolorallocatealpha($backGround, 0, 0, 0, 127);
     imagefill($backGround, 0, 0, $color);
 
     $logo = imagecreatefrompng("{$webSiteRootURL}videos/favicon.png");
-    //$logo = imagecreatefrompng("{$webSiteRootURL}videos/userPhoto/logo.png"); 
+    //$logo = imagecreatefrompng("{$webSiteRootURL}videos/userPhoto/logo.png");
     $opacity = 0.4;
     imagealphablending($logo, false); // imagesavealpha can only be used by doing this for some reason
-    imagesavealpha($logo, true); // this one helps you keep the alpha. 
+    imagesavealpha($logo, true); // this one helps you keep the alpha.
     $transparency = 1 - $opacity;
-    imagefilter($logo, IMG_FILTER_COLORIZE, 0, 0, 0, 127 * $transparency); // the fourth parameter is alpha   
+    imagefilter($logo, IMG_FILTER_COLORIZE, 0, 0, 0, 127 * $transparency); // the fourth parameter is alpha
 
     imagecopyresized($backGround, $logo, 1220, 5, 0, 0, 50, 50, 180, 180);
-    //imagecopy($backGround, $logo, 1000, 25, 0, 0, 250, 70);  
+    //imagecopy($backGround, $logo, 1000, 25, 0, 0, 250, 70);
 
     imagepng($backGround, $imgPath);
     return $imgPath;

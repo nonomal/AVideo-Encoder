@@ -9,13 +9,18 @@ if (empty($_GET['totalClips'])) {
 }
 
 $url = base64_decode($_GET['base64Url']);
+$url = getExternalHttpUrlForShell($url, 'getSpiritsFromVideo');
+if ($url === false) {
+    die();
+}
+
 $parts = explode("?token", $url);
 $baseName = md5($parts[0]);
 $imageFileName = $global['systemRootPath'] . "videos/sprit_{$baseName}.jpg";
 //$url = "http://127.0.0.1/AVideo/videos/_YPTuniqid_5a01ef79b04ec6.24051213_HD.mp4";
 
-$tileWidth = $_GET['tileWidth'];
-$numberOfTiles = $_GET['totalClips'];
+$tileWidth = intval($_GET['tileWidth']);
+$numberOfTiles = intval($_GET['totalClips']);
 
 $tileHeight = intval($tileWidth / 16 * 9);
 
@@ -28,15 +33,32 @@ if (!empty($_GET['duration'])) {
 $videoLength = parseDurationToSeconds($duration);
 
 $step = $videoLength / $numberOfTiles;
-
+error_log("getSpritsFromVideo: step=$step videoLength=$videoLength numberOfTiles=$numberOfTiles");
+//var_dump($_REQUEST);exit;
 header("Content-type: image/jpeg");
 if (!file_exists($imageFileName)) {
     // display a dummy image
-    echo url_get_contents($global['systemRootPath'] . "view/img/creatingImages.jpg");
+    if(empty($_REQUEST['sync'])){
+        echo url_get_contents($global['systemRootPath'] . "view/img/creatingImages.jpg");
+    }
     //call createsprits
-    $command = (getPHP()." \"{$global['systemRootPath']}objects/createSpiritsFromVideo.php\" \"$url\" \"$step\" \"$tileWidth\" \"$tileHeight\" \"$imageFileName\" \"$numberOfTiles\" \"$baseName\"");
+    $urlEscaped = escapeshellarg($url);
+    $stepEscaped = escapeshellarg($step);
+    $tileWidthEscaped = escapeshellarg($tileWidth);
+    $tileHeightEscaped = escapeshellarg($tileHeight);
+    $imageFileNameEscaped = escapeshellarg($imageFileName);
+    $numberOfTilesEscaped = escapeshellarg($numberOfTiles);
+    $baseNameEscaped = escapeshellarg($baseName);
+    $command = (getPHP()." \"{$global['systemRootPath']}objects/createSpiritsFromVideo.php\" {$urlEscaped} {$stepEscaped} {$tileWidthEscaped} {$tileHeightEscaped} {$imageFileNameEscaped} {$numberOfTilesEscaped} {$baseNameEscaped}");
     error_log("getSpritsFromVideo: {$command}");
-    execAsync($command);
+    if(!empty($_REQUEST['sync'])){
+        exec($command." 1");
+        echo url_get_contents($imageFileName);
+        //var_dump($imageFileName);
+        @unlink($imageFileName);
+    }else{
+        execAsync($command);
+    }
 } else {
     echo url_get_contents($imageFileName);
     unlink($imageFileName);

@@ -1,5 +1,7 @@
 <?php
-
+if (empty($global)) {
+    $global=[];
+}
 if (empty($global['systemRootPath'])) {
     require_once dirname(__FILE__) . '/../videos/configuration.php';
     require_once '../objects/Encoder.php';
@@ -21,7 +23,7 @@ if (isset($_FILES['upl']) && $_FILES['upl']['error'] == 0) {
     //echo "Success: file extension OK\n";
     //chack if is an audio
     $type = "video";
-    if (strcasecmp($extension, 'mp3') == 0 || strcasecmp($extension, 'wav') == 0) {
+    if (in_array(strtolower($extension), Encoder::AUDIO_EXTENSIONS)) {
         $type = 'audio';
     }
 
@@ -33,12 +35,12 @@ if (isset($_FILES['upl']) && $_FILES['upl']['error'] == 0) {
     $destinationFileURI = "{$global['webSiteRootURL']}videos/original_" . $filename;
     if (!empty($forceRename)) {
         if (!rename($_FILES['upl']['tmp_name'], $destinationFile)) {
-            $obj->msg = "Error on rename(" . $_FILES['upl']['tmp_name'] . ", " . "{$global['systemRootPath']}videos/original_" . $filename . ")";
+            $obj->msg = "Error on rename(" . $_FILES['upl']['tmp_name'] . ",  {$destinationFile})";
             die(json_encode($obj));
         }
     } else {
         if (!move_uploaded_file($_FILES['upl']['tmp_name'], $destinationFile)) {
-            $obj->msg = "Error on move_uploaded_file(" . $_FILES['upl']['tmp_name'] . ", " . "{$global['systemRootPath']}videos/original_" . $filename . ")";
+            $obj->msg = "Error on move_uploaded_file(" . $_FILES['upl']['tmp_name'] . ",  {$destinationFile})";
             die(json_encode($obj));
         }
     }
@@ -46,8 +48,7 @@ if (isset($_FILES['upl']) && $_FILES['upl']['error'] == 0) {
     $e = new Encoder("");
     if (!Login::canUpload()) {
         $obj->msg = "This user can not upload files";
-    } else
-    if (!($streamers_id = Login::getStreamerId())) {
+    } elseif (!($streamers_id = Login::getStreamerId())) {
         $obj->msg = "There is no streamer site";
     } else {
         $e->setStreamers_id($streamers_id);
@@ -55,7 +56,7 @@ if (isset($_FILES['upl']) && $_FILES['upl']['error'] == 0) {
         $e->setTitle($path_parts['filename']);
         $e->setFileURI($destinationFileURI);
         $e->setFilename($filename);
-        $e->setStatus('queue');
+        $e->setStatus(Encoder::STATUS_QUEUE);
         $e->setPriority($s->getPriority());
         //$e->setNotifyURL($global['AVideoURL'] . "aVideoEncoder.json");
         //error_log("Upload.php will set format");
@@ -63,7 +64,7 @@ if (isset($_FILES['upl']) && $_FILES['upl']['error'] == 0) {
             if (!empty($_POST['audioOnly']) && $_POST['audioOnly'] !== 'false') {
                 if (!empty($_POST['spectrum']) && $_POST['spectrum'] !== 'false') {
                     error_log("Upload.php set format 11");
-                    $e->setFormats_id(11); // video to spectrum [(6)MP4 to MP3] -> [(5)MP3 to spectrum] -> [(2)MP4 to webm] 
+                    $e->setFormats_id(11); // video to spectrum [(6)MP4 to MP3] -> [(5)MP3 to spectrum] -> [(2)MP4 to webm]
                 } else {
                     error_log("Upload.php set format 12");
                     $e->setFormats_id(12);
@@ -76,15 +77,13 @@ if (isset($_FILES['upl']) && $_FILES['upl']['error'] == 0) {
             if (!empty($_POST['inputAutoHLS']) && strtolower($_POST['inputAutoHLS']) !== "false") {
                 error_log("Upload.php set format 33");
                 $e->setFormats_id(33);
-            } else
-            if (!empty($_POST['inputAutoMP4']) && strtolower($_POST['inputAutoMP4']) !== "false") {
+            } elseif (!empty($_POST['inputAutoMP4']) && strtolower($_POST['inputAutoMP4']) !== "false") {
                 error_log("Upload.php set format 33");
                 $e->setFormats_id(34);
-            } else
-            if (empty($global['disableWebM']) && !empty($_POST['inputAutoWebm']) && strtolower($_POST['inputAutoWebm']) !== "false") {
+            } elseif (empty($global['disableWebM']) && !empty($_POST['inputAutoWebm']) && strtolower($_POST['inputAutoWebm']) !== "false") {
                 error_log("Upload.php set format 35");
                 $e->setFormats_id(35);
-            } else if (!empty($_POST['spectrum']) && $_POST['spectrum'] !== 'false') {
+            } elseif (!empty($_POST['spectrum']) && $_POST['spectrum'] !== 'false') {
                 error_log("Upload.php set format 5");
                 $e->setFormats_id(5);
             } else {
@@ -92,27 +91,35 @@ if (isset($_FILES['upl']) && $_FILES['upl']['error'] == 0) {
                 $e->setFormats_id(3);
             }
         }
-        if (!empty($_POST['override_status']))
+        if (!empty($_POST['override_status'])) {
             $e->setOverride_status($_POST['override_status']);
+        }
 
         $obj = new stdClass();
         $obj->videos_id = 0;
         $obj->video_id_hash = '';
         $f = new Format($e->getFormats_id());
         $format = $f->getExtension();
-        
-        if (!empty($_POST['update_video_id']))
-            $obj->videos_id = $_POST['update_video_id'];
-        else
-            $obj->videos_id = 0;
 
-        // This raises an harmless error
-        $response = Encoder::sendFile('', $obj, $format, $e);
+        if (!empty($_POST['update_video_id'])) {
+            $obj->videos_id = $_POST['update_video_id'];
+        } else {
+            $obj->videos_id = intval(@$_POST['videos_id']);
+        }
+        //var_dump($obj->videos_id, $_POST);exit;
+        $obj->releaseDate = @$_REQUEST['releaseDate'];
+
+        $e->setReturn_vars(json_encode($obj));
+        error_log("Upload.php metadata-only bootstrap line: " . __LINE__ . ' ' . json_encode(['format' => $format, 'videos_id' => $obj->videos_id, 'releaseDate' => $obj->releaseDate]));
+        $response = $e->getNewVideosId($obj);
         if (!empty($response->response->video_id)) {
             $obj->videos_id = $response->response->video_id;
         }
         if (!empty($response->response->video_id_hash)) {
             $obj->video_id_hash = $response->response->video_id_hash;
+        }
+        if (empty($obj->videos_id)) {
+            error_log("Upload.php metadata-only bootstrap did not return videos_id response=" . json_encode($response));
         }
         $e->setReturn_vars(json_encode($obj));
 

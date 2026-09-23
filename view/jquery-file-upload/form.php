@@ -1,107 +1,116 @@
-<form id="fileupload" action="https://jquery-file-upload.appspot.com/" method="POST" enctype="multipart/form-data">
+<?php
+if(!isset($global['videoEditorForcePlaylist'])){
+    $global['videoEditorForcePlaylist'] = !empty($_REQUEST['playlists_id']);
+}
+?>
+<!-- <?php echo basename(__FILE__); ?> line=<?php echo __LINE__; ?> -->
+<form id="fileupload" action="" method="POST" enctype="multipart/form-data">
+    <input type="hidden" id="videos_id" name="videos_id">
+    <input type="hidden" id="user" value="<?php echo $_SESSION["login"]->user; ?>">
+    <input type="hidden" id="pass" value="<?php echo $_SESSION["login"]->pass; ?>">
     <div class="form-group">
-        <input type="text" class="form-control" id="title" name="title" placeholder="Title">
+        <input type="text" class="form-control" id="title" name="title" placeholder="<?php echo __('Title'); ?>">
     </div>
     <div class="form-group">
-        <textarea class="form-control" id="description" name="description" placeholder="Description"></textarea>
+        <textarea class="form-control" id="description" name="description" placeholder="<?php echo __('Description'); ?>"></textarea>
     </div>
     <?php
+    $releaseDateId = 'releaseDate';
+    include $global['systemRootPath'] . 'view/releaseDate.php';
+    ?>
+    <div class="clearfix"></div>
+    <?php
+
     if (!empty($_SESSION['login']->categories)) {
-        ?>
+    ?>
         <div class="form-group">
             <div style="display: flex;">
-                <select class="form-control categories_id" id="categories_id" name="categories_id">
-
-                    <option value="0">Category - Use site default</option>
-                    <?php
-                    array_multisort(array_column($_SESSION['login']->categories, 'hierarchyAndName'), SORT_ASC, $_SESSION['login']->categories);
-                    foreach ($_SESSION['login']->categories as $key => $value) {
-                        echo '<option value="' . $value->id . '">' . $value->hierarchyAndName . '</option>';
-                    }
-                    ?>
-                </select>
                 <?php
-                if (Login::canCreateCategory()) {
-                    ?>
-                        <button class="btn btn-primary" type="button" onclick="addNewCategory();"><i class="fas fa-plus"></i></button>
-                        <script>
-                            var reloadIfIsNotEditingCategoryTimeout;
-                            function addNewCategory() {
-                                clearTimeout(reloadIfIsNotEditingCategoryTimeout);
-                                avideoModalIframe('<?php echo $streamerURL; ?>categories');
-                                reloadIfIsNotEditingCategoryTimeout = setTimeout(function(){reloadIfIsNotEditingCategory();}, 500);
-                            }
-                            
-                            function reloadIfIsNotEditingCategory(){
-                                clearTimeout(reloadIfIsNotEditingCategoryTimeout);
-                                if(!avideoModalIframeIsVisible()){
-                                    loadCategories();
-                                }else{
-                                    reloadIfIsNotEditingCategoryTimeout = setTimeout(function(){reloadIfIsNotEditingCategory();}, 500);
-                                }
-                            }
-                        </script>
-                    <?php
-                }
+                echo getCategoriesSelect('categories_id_upload');
                 ?>
             </div>
-        </div> 
-        <script>
-            function loadCategories() {
-                console.log('loadCategories');
-                modal.showPleaseWait();
-                $.ajax({
-                    url: '<?php echo $streamerURL; ?>objects/categories.json.php',
-                    success: function (response) {
-                        $('.categories_id').empty();
-                        for (var item in response.rows) {
-                            if (typeof response.rows[item] != 'object') {
-                                continue;
-                            }
-                            $('.categories_id').append('<option value="' + response.rows[item].id + '"> ' + response.rows[item].hierarchyAndName + '</option>');
-                        }
-                        modal.hidePleaseWait();
-                    }
-                });
-            }
-            $(document).ready(function () {
-                //loadCategories();
-            });
-        </script>
-        <?php
+        </div>
+    <?php
     }
     ?>
     <!-- Redirect browsers with JavaScript disabled to the origin page -->
-    <noscript><input type="hidden" name="redirect" value="https://blueimp.github.io/jQuery-File-Upload/"></noscript>
+    <noscript><input type="hidden" name="redirect" value=""></noscript>
     <!-- The fileupload-buttonbar contains buttons to add/delete files and start/cancel the upload -->
     <div class="row fileupload-buttonbar">
         <div class="col-lg-12">
             <!-- The fileinput-button span is used to style the file input field as button -->
             <span class="btn btn-success fileinput-button col-sm-12">
-                <i class="glyphicon glyphicon-plus"></i>
-                <span>Add files...</span>
-                <input type="file" name="files[]" multiple>
+                <i class="fas fa-plus" aria-hidden="true"></i>
+                <span><?php echo __('Add files...'); ?></span>
+                <input type="file" name="files[]" multiple />
             </span>
-            <button type="submit" class="btn btn-primary start col-sm-4" style="border-top-right-radius: 0; border-bottom-right-radius: 0;">
-                <i class="glyphicon glyphicon-upload"></i>
-                <span>Start upload</span>
-            </button>
-            <button type="reset" class="btn btn-warning cancel col-sm-4" style="border-radius: 0;">
-                <i class="glyphicon glyphicon-ban-circle"></i>
-                <span>Cancel upload</span>
-            </button>
-            <button type="button" class="btn btn-danger delete col-sm-4" style="border-top-left-radius: 0; border-bottom-left-radius: 0;">
-                <i class="glyphicon glyphicon-trash"></i>
-                <span>Delete</span>
-            </button>
-            <input type="checkbox" class="toggle" name="selectAll" >
-            <label for="selectAll"> Select All </label>
+            <div class="btn-group btn-group-justified upload-action-group">
+                <button type="submit" class="btn btn-primary start upload-action">
+                    <i class="fas fa-upload" aria-hidden="true"></i>
+                    <span><?php echo __('Upload'); ?></span>
+                </button>
+                <button type="reset" class="btn btn-warning cancel upload-action">
+                    <i class="fas fa-ban" aria-hidden="true"></i>
+                    <span><?php echo __('Cancel'); ?></span>
+                </button>
+                <button type="button" class="btn btn-danger delete upload-action">
+                    <i class="fas fa-trash" aria-hidden="true"></i>
+                    <span><?php echo __('Delete'); ?></span>
+                </button>
+            </div>
+            <div class="upload-preferences">
+                <label class="upload-preference" for="selectAll">
+                    <input type="checkbox" class="toggle" id="selectAll" name="selectAll" />
+                    <span class="upload-preference-icon" aria-hidden="true"><i class="fas fa-list-ul"></i></span>
+                    <span class="upload-preference-text"><?php echo __('Select All'); ?></span>
+                </label>
+                <label class="upload-preference" for="videoEditorToggle">
+                    <input type="checkbox" id="videoEditorToggle">
+                    <span class="upload-preference-icon" aria-hidden="true"><i class="fas fa-pencil-alt"></i></span>
+                    <span class="upload-preference-text"><?php echo __('Edit while uploading'); ?></span>
+                </label>
+                <script>
+                        var videoEditorEnabledByDefault = <?php echo empty($global['videoEditorEnabledByDefault']) ? 'false' : 'true'; ?>;
+                        var videoEditorForcePlaylist = <?php echo empty($global['videoEditorForcePlaylist']) ? 'false' : 'true'; ?>;
+                        var playlists_id = <?php echo intval(@$_REQUEST['playlists_id']); ?>;
+
+
+                        function isEditorEnabled() {
+                            var videoEditorEnabled = Cookies.get('videoEditorEnabled');
+                            var editorEnabled;
+                            if (typeof videoEditorEnabled === 'undefined') {
+                                editorEnabled = videoEditorEnabledByDefault;
+                            } else {
+                                editorEnabled = videoEditorEnabled === 'true';
+                            }
+                            return editorEnabled;
+                        }
+
+                        $(document).ready(function() {
+                            var editorEnabled = isEditorEnabled();
+                            // Set the initial state of the checkbox based on the saved preference
+                            $('#videoEditorToggle').prop('checked', editorEnabled);
+
+                            // Handle checkbox change event
+                            $('#videoEditorToggle').on('change', function() {
+                                var isChecked = $(this).prop('checked');
+
+                                // Save the user's choice in a cookie
+                                Cookies.set('videoEditorEnabled', isChecked, {
+                                    expires: 365
+                                }); // Cookie expires in 365 days
+                            });
+                        });
+                </script>
+            </div>
             <!-- The global file processing state -->
             <span class="fileupload-process"></span>
         </div>
     </div>
     <!-- The table listing the files available for upload/download -->
-    <table role="presentation" class="table table-striped"><tbody class="files"></tbody></table>
+    <table role="presentation" class="table table-striped">
+        <tbody class="files"></tbody>
+    </table>
 </form>
 <!-- The template to display files available for upload -->
 <script id="template-upload" type="text/x-tmpl">
@@ -115,19 +124,19 @@
     {% } %}
     <strong class="error text-danger"></strong>
     <br>
-    <p class="size">Processing...</p>
+    <p class="size"><?php echo __('Processing...'); ?></p>
     <div class="progress progress-striped active" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="progress-bar progress-bar-success" style="width:0%;"></div></div>
     <br>
     {% if (!i && !o.options.autoUpload) { %}
     <button class="btn btn-primary start" disabled>
-    <i class="glyphicon glyphicon-upload"></i>
-    <span>Start</span>
+    <i class="fas fa-upload"></i>
+    <span><?php echo __('Start'); ?></span>
     </button>
     {% } %}
     {% if (!i) { %}
     <button class="btn btn-warning cancel">
-    <i class="glyphicon glyphicon-ban-circle"></i>
-    <span>Cancel</span>
+    <i class="fas fa-ban"></i>
+    <span><?php echo __('Cancel'); ?></span>
     </button>
     {% } %}
     </td>
@@ -156,7 +165,7 @@
     </p>
     {% } %}
     {% if (file.error) { %}
-    <div><span class="label label-danger">Error</span> {%=file.error%}</div>
+    <div><span class="label label-danger"><?php echo __('Error'); ?></span> {%=file.error%}</div>
     {% } %}
     </td>
     <td>
@@ -165,14 +174,14 @@
     <td>
     {% if (file.deleteUrl) { %}
     <button class="btn btn-danger delete" data-type="{%=file.deleteType%}" data-url="{%=file.deleteUrl%}&PHPSESSID={%=PHPSESSID%}"{% if (file.deleteWithCredentials) { %} data-xhr-fields='{"withCredentials":true}'{% } %}>
-    <i class="glyphicon glyphicon-trash"></i>
-    <span>Delete</span>
+    <i class="fas fa-trash"></i>
+    <span><?php echo __('Delete'); ?></span>
     </button>
     <input type="checkbox" name="delete" value="1" class="toggle">
     {% } else { %}
     <button class="btn btn-warning cancel">
-    <i class="glyphicon glyphicon-ban-circle"></i>
-    <span>Cancel</span>
+    <i class="fas fa-ban"></i>
+    <span><?php echo __('Cancel'); ?></span>
     </button>
     {% } %}
     </td>
@@ -182,13 +191,13 @@
 <!-- The jQuery UI widget factory, can be omitted if jQuery UI is already included -->
 <script src="<?php echo $global['webSiteRootURL']; ?>view/jquery-file-upload/js/vendor/jquery.ui.widget.js"></script>
 <!-- The Templates plugin is included to render the upload/download listings -->
-<script src="https://blueimp.github.io/JavaScript-Templates/js/tmpl.min.js"></script>
+<script src="<?php echo $global['webSiteRootURL']; ?>view/js/tmpl.min.js"></script>
 <!-- The Load Image plugin is included for the preview images and image resizing functionality -->
-<script src="https://blueimp.github.io/JavaScript-Load-Image/js/load-image.all.min.js"></script>
+<script src="<?php echo $global['webSiteRootURL']; ?>view/js/load-image.all.min.js"></script>
 <!-- The Canvas to Blob plugin is included for image resizing functionality -->
-<script src="https://blueimp.github.io/JavaScript-Canvas-to-Blob/js/canvas-to-blob.min.js"></script>
+<script src="<?php echo $global['webSiteRootURL']; ?>view/js/canvas-to-blob.min.js"></script>
 <!-- blueimp Gallery script -->
-<script src="https://blueimp.github.io/Gallery/js/jquery.blueimp-gallery.min.js"></script>
+<script src="<?php echo $global['webSiteRootURL']; ?>view/js/jquery.blueimp-gallery.min.js"></script>
 <!-- The Iframe Transport is required for browsers without support for XHR file uploads -->
 <script src="<?php echo $global['webSiteRootURL']; ?>view/jquery-file-upload/js/jquery.iframe-transport.js"></script>
 <!-- The basic File Upload plugin -->
@@ -206,7 +215,7 @@
 <!-- The File Upload user interface plugin -->
 <script src="<?php echo $global['webSiteRootURL']; ?>view/jquery-file-upload/js/jquery.fileupload-ui.js"></script>
 <!-- The main application script -->
-<script src="<?php echo $global['webSiteRootURL']; ?>view/jquery-file-upload/js/main.js?<?php echo filectime($global['systemRootPath'] . "view/jquery-file-upload/js/main.js"); ?>"></script>
+<script src="<?php echo $global['webSiteRootURL']; ?>view/jquery-file-upload/js/main.js?<?php echo filectime($global['systemRootPath'] . 'view/jquery-file-upload/js/main.js'); ?>"></script>
 <!-- The XDomainRequest Transport is included for cross-domain file deletion for IE 8 and IE 9 -->
 <!--[if (gte IE 8)&(lt IE 10)]>
 <script src="<?php echo $global['webSiteRootURL']; ?>view/jquery-file-upload/js/cors/jquery.xdr-transport.js"></script>

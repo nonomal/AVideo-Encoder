@@ -7,39 +7,53 @@ ini_set('max_execution_time', $max_execution_time);
 $pxBetweenTiles = 0;
 
 $url = $argv[1];
-$step = $argv[2];
+$step = floatval($argv[2]);
 $tileWidth = $argv[3];
 $tileHeight = $argv[4];
 $imageFileName = $argv[5];
 $numberOfTiles = $argv[6];
 $baseName = $argv[7];
+$force = intval(@$argv[8]);
+
+if ($step <= 0) {
+    $step = 0.01;
+}
 
 $dirname = $global['systemRootPath'] . "videos/thumbs_{$baseName}/";
-if (is_dir($dirname)) {
+if (is_dir($dirname) && empty($force)) {
+    $dirSize = dirSize($dirname);
     if (time() - filemtime($dirname) > $max_execution_time) {
         // file older than 2 hours
         error_log("CreateSpirits:  request is older then 2 hours, we will try again");
     } else {
-        error_log("CreateSpirits:  we are working on it, please wait");
+        error_log("CreateSpirits:  we are working on it, dirsize={$dirSize}, please wait {$dirname}");
         exit;
     }
 }
 
-$url = str_replace('https://gdrive.local/', 'http://192.168.1.4/', $url);
+$url = str_replace('https://gdrive.local/', 'http://192.168.0.2/', $url);
 /**
-if(!isURL200($url)){
-    $headers = get_headers($url);
-    error_log("URL $url is not 200 code ". json_encode($headers));
-    return false;
-}
- * 
+  if (!isURL200($url)){
+  $headers = get_headers($url);
+  error_log("URL $url is not 200 code ". json_encode($headers));
+  return false;
+  }
+ *
  */
-
 error_log("CreateSpirits:  creating directory {$dirname}");
-mkdir($dirname);
+$created = make_path($dirname);
 
-if(!is_dir($dirname)){
-    error_log("CreateSpirits: Could not create dir $dirname");
+if (empty($created) || !is_dir($dirname)) {
+    try {
+        mkdir($dirname, 0777, true);
+        error_log("CreateSpirits: NO mkdir error ");
+    } catch (ErrorException $ex) {
+        error_log("CreateSpirits: ERROR " . $ex->getMessage());
+    }
+}
+
+if (!is_dir($dirname)) {
+    error_log("CreateSpirits: Could not create dir " . json_encode(error_get_last()));
     return false;
 }
 
@@ -48,15 +62,27 @@ $height = $tileHeight + $pxBetweenTiles;
 $mapWidth = ($tileWidth + $pxBetweenTiles) * 10;
 $mapHeight = $tileHeight * (ceil($numberOfTiles / 10));
 
-$cmd = get_ffmpeg()." -i \"{$url}\" -map 0:v:0 -vf fps=1/{$step} -s {$tileWidth}x{$tileHeight} \"{$dirname}out%03d.png\"  2>&1 ";
+$urlEscaped = escapeshellarg($url);
+$outPatternEscaped = escapeshellarg("{$dirname}out%03d.png");
+$cmd = get_ffmpeg() . " -i {$urlEscaped} -map 0:v:0 -vf fps=1/{$step},"
+        . getFFmpegScaleToForceOriginalAspectRatio($tileWidth, $tileHeight) .
+        " -frames:v 100 "
+        . " {$outPatternEscaped}  2>&1 ";
+
+$cmd = removeUserAgentIfNotURL($cmd);
 error_log("CreateSpirits: $cmd");
 //var_dump($duration, $videoLength);echo $cmd;exit;
 exec($cmd, $output, $return_var);
 //error_log("CreateSpirits: ". json_encode($output));
 //error_log("CreateSpirits: ". json_encode($return_var));
+$dirSize = dirSize($dirname);
+if ($dirSize<100000){
+    error_log("CreateSpirits: ERROR on dirsize={$dirSize} {$cmd}");
+    return false;
+}
 
 $images = glob($dirname . "*.png");
-$srcImagePaths = Array();
+$srcImagePaths = [];
 
 foreach ($images as $image) {
     $srcImagePaths[] = $image;
@@ -83,13 +109,11 @@ $it = new RecursiveDirectoryIterator($dirname, RecursiveDirectoryIterator::SKIP_
 $files = new RecursiveIteratorIterator($it, RecursiveIteratorIterator::CHILD_FIRST);
 foreach ($files as $file) {
     if ($file->isDir()) {
-        rmdir($file->getRealPath());
+        //rmdir($file->getRealPath());
     } else {
-        unlink($file->getRealPath());
+        //unlink($file->getRealPath());
     }
 }
 
 error_log("CreateSpirits:  removing directory {$dirname}");
-rmdir($dirname);
-/* * 
- */
+//rmdir($dirname);

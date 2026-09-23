@@ -1,0 +1,55 @@
+name: Encoder regression tests
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        required: true
+        type: string
+  push:
+    branches: [ "master", "main", "develop" ]
+  pull_request:
+    branches: [ "master", "main", "develop" ]
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        php-versions: ['8.1', '8.2', '8.3']
+
+    name: PHP ${{ matrix.php-versions }} Tests
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php-versions }}
+          extensions: pcre, mbstring, xml, curl, gd, pdo_mysql, zip, intl, pcntl
+          coverage: none
+
+      - name: Install media tools for real FFmpeg regressions
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ffmpeg zip unzip
+          ffmpeg -version
+          ffprobe -version
+
+      - name: Run every standalone PHP regression (required)
+        run: |
+          tests=(tests/*-regression.php)
+          test -f "${tests[0]}"
+          for test in "${tests[@]}"; do
+            php "$test"
+          done

@@ -1,51 +1,384 @@
+/* ============================================================
+   Modern visual refresh — shape, motion and spacing only.
+   Colors/backgrounds for shared Bootstrap classes (navbar, panel,
+   buttons, forms, tabs) are intentionally NOT set here: the parent
+   site can load a different Bootswatch theme per install (view/css/
+   custom/*.css, includes dark ones like darkly/cyborg/slate/
+   superhero) which fully re-themes those same selectors after this
+   file loads. Keep this file opinion-free about light vs dark —
+   radius/shadow/transition/transform only, never background/color.
+   ============================================================ */
+:root {
+    --enc-radius: 10px;
+    --enc-radius-sm: 6px;
+    --enc-shadow: 0 2px 10px rgba(0, 0, 0, .08), 0 1px 2px rgba(0, 0, 0, .06);
+    --enc-shadow-hover: 0 10px 26px rgba(0, 0, 0, .16);
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+.panel {
+    border-radius: var(--enc-radius) !important;
+    box-shadow: var(--enc-shadow) !important;
+}
+
+.panel > .panel-heading:first-child {
+    border-top-left-radius: var(--enc-radius);
+    border-top-right-radius: var(--enc-radius);
+}
+
+.panel > .panel-body:last-child,
+.panel > .panel-footer:last-child {
+    border-bottom-left-radius: var(--enc-radius);
+    border-bottom-right-radius: var(--enc-radius);
+}
+
+/* Flat underline tabs instead of Bootstrap's boxed "paper tab" look.
+   currentColor reuses whatever text color the active theme already
+   gives the tab, so the underline never fights a theme's palette. */
+.nav-tabs > li > a {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: none !important;
+    background: transparent !important;
+    border-radius: 0 !important;
+    border-bottom: 2px solid transparent !important;
+    margin-right: 4px;
+    transition: border-color .15s ease;
+}
+
+.nav-tabs > li > a:hover,
+.nav-tabs > li > a:focus {
+    background: transparent !important;
+}
+
+.nav-tabs > li.active > a,
+.nav-tabs > li.active > a:hover,
+.nav-tabs > li.active > a:focus {
+    background: transparent !important;
+    border-bottom-color: currentColor !important;
+    font-weight: 600;
+}
+
+.btn {
+    border-radius: var(--enc-radius-sm);
+    transition: transform .1s ease, box-shadow .15s ease, background-color .15s ease;
+}
+
+.btn:active {
+    transform: translateY(1px);
+}
+
+.form-control {
+    border-radius: var(--enc-radius-sm);
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.well {
+    border-radius: var(--enc-radius) !important;
+    box-shadow: var(--enc-shadow);
+}
+
+/* Compact upload-source tabs: equal widths keep every option on one row. */
+.nav-tabs-icons {
+    display: flex;
+    align-items: stretch;
+    width: 100%;
+}
+
+.nav-tabs-icons > li {
+    float: none;
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.nav-tabs-icons > li > a {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    width: 100%;
+    min-height: 52px;
+    height: 100%;
+    margin-right: 0;
+    padding: 8px 9px;
+    line-height: 1.2;
+    text-align: center;
+    white-space: normal;
+}
+
+.nav-tabs-icons > li > a i {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 18px;
+    width: 18px;
+    margin: 0;
+    font-size: 16px;
+}
+
+.nav-tabs-icons .encoder-tab-label {
+    display: block;
+    min-width: 0;
+}
+
+.radio-tile-group {
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    max-width: 340px;
+    margin: 0 auto;
+}
+
+.radio-tile-group .input-container {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: 80px;
+    height: 68px;
+    margin: 0;
+}
+
+.radio-tile-group .input-container .radio-button {
+    position: absolute;
+    z-index: 2;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    cursor: pointer;
+    opacity: 0;
+}
+
+.radio-tile-group .input-container .radio-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    width: 100%;
+    height: 100%;
+    padding: 6px;
+    border: 1px solid #079ad9;
+    border-radius: 8px;
+    transition: transform .15s ease, box-shadow .15s ease, background-color .15s ease;
+}
+
+.radio-tile-group .input-container i {
+    color: #079ad9;
+    font-size: 1.4em;
+}
+
+.radio-tile-group .input-container .radio-tile-label {
+    margin: 0;
+    color: #079ad9;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: .04em;
+    text-align: center;
+    text-transform: uppercase;
+}
+
+.radio-tile-group .input-container .radio-button:focus + .radio-tile {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+}
+
+.radio-tile-group .input-container .radio-button:checked + .radio-tile {
+    color: #fff;
+    background-color: #079ad9;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, .14);
+    transform: translateY(-1px);
+}
+
+.radio-tile-group .input-container .radio-button:checked + .radio-tile i,
+.radio-tile-group .input-container .radio-button:checked + .radio-tile .radio-tile-label {
+    color: inherit;
+}
+
+.radio-tile-group .input-container .radio-tile-disabled {
+    position: relative;
+    border-color: #999;
+    opacity: .65;
+}
+
+.radio-tile-group .input-container .radio-tile-disabled i,
+.radio-tile-group .input-container .radio-tile-disabled .radio-tile-label {
+    color: #888;
+}
+
+.radio-tile-group .input-container .hls-disabled-help {
+    position: absolute;
+    top: 5px;
+    right: 6px;
+    color: #f0ad4e;
+    cursor: help;
+    font-size: 1em;
+}
+
+.label {
+    border-radius: 20px;
+    padding: .3em .75em .35em;
+    font-weight: 600;
+    letter-spacing: .01em;
+}
+
+/* Custom scrollbar for the scrollable log/streamer grids (WebKit-only —
+   browsers without support just keep their native scrollbar, no breakage). */
+.table-responsive::-webkit-scrollbar {
+    height: 8px;
+}
+
+.table-responsive::-webkit-scrollbar-thumb {
+    background-color: rgba(127, 127, 127, .5);
+    border-radius: 20px;
+}
+
 .progress {
     position: relative;
-    height: 25px;
+    height: 26px;
+    overflow: hidden;
+    background-color: rgba(127, 127, 127, .18);
+    border-radius: var(--enc-radius-sm);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, .1);
 }
-.progress > .progress-type {
+
+/* The template applies "progress-striped active" to the outer .progress
+   container (Bootstrap 2 naming); Bootstrap 3 only animates .progress-bar-
+   striped on the inner fill, so this combo never actually animated before. */
+@keyframes enc-progress-stripes {
+    from {
+        background-position: 40px 0;
+    }
+    to {
+        background-position: 0 0;
+    }
+}
+
+.progress.progress-striped.active .progress-bar {
+    background-image: linear-gradient(45deg, rgba(255, 255, 255, .15) 25%, transparent 25%, transparent 50%, rgba(255, 255, 255, .15) 50%, rgba(255, 255, 255, .15) 75%, transparent 75%, transparent);
+    background-size: 40px 40px;
+    animation: enc-progress-stripes 1s linear infinite;
+}
+
+.text-Outline-black {
+    text-shadow:
+      -1px -1px 0 #000, /* top-left */
+      1px -1px 0 #000,  /* top-right */
+      -1px 1px 0 #000,  /* bottom-left */
+      1px 1px 0 #000;   /* bottom-right */
+  }
+  .text-Outline-white {
+      text-shadow:
+        -1px -1px 0 #FFF, /* top-left */
+        1px -1px 0 #FFF,  /* top-right */
+        -1px 1px 0 #FFF,  /* bottom-left */
+        1px 1px 0 #FFF;   /* bottom-right */
+    }
+
+/* Overlay sits on top of the progress-bar fill (position: absolute) so the
+   title/percentage text never fights the bar itself for horizontal space,
+   which is what caused the text to shift/clip as the bar filled up. */
+.progress-overlay {
     position: absolute;
-    left: 0px;
-    font-weight: 800;
-    padding: 3px 30px 2px 10px;
-    color: rgb(255, 255, 255);
-    background-color: rgba(25, 25, 25, 0.2);
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 10px;
+    pointer-events: none;
 }
-.progress > .progress-completed {
-    position: absolute;
-    right: 0px;
-    font-weight: 800;
-    padding: 3px 10px 2px;
+
+.progress-overlay .progress-type {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: #FFF;
+    text-shadow: 0px 0px 5px #000;
+    white-space: nowrap; /* Prevents the text from wrapping */
+    overflow: hidden; /* Hides the overflowing text */
+    text-overflow: ellipsis; /* Adds the ellipsis to the end of the text */
 }
+
+.progress-overlay .progress-completed {
+    flex: 0 0 auto;
+    margin-left: 10px;
+    font-weight: 700;
+    color: #000;
+    text-shadow: 0px 0px 5px #FFF;
+    white-space: nowrap;
+}
+
+.progress-completed .badge {
+    background-color: rgba(0, 0, 0, .55);
+    color: #fff;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 20px;
+    font-size: 85%;
+    text-shadow: none;
+}
+
 .progress-bar {
-    -webkit-transition: width 2.5s ease;
-    -o-transition: width 2.5s ease;
-    transition: width 2.5s ease;
+    -webkit-transition: width .6s ease;
+    -o-transition: width .6s ease;
+    transition: width .6s ease;
 }
 
-.material-switch > input[type="checkbox"] {
-    display: none;   
+/* Glossy highlight over the fill so the bar reads as a polished control rather
+   than a flat rectangle, regardless of which color the active theme gives it. */
+.encodingProgress .progress-bar,
+.downloadProgress .progress-bar {
+    position: relative;
 }
 
-.material-switch > label {
+.encodingProgress .progress-bar::after,
+.downloadProgress .progress-bar::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, .35), rgba(255, 255, 255, 0) 45%, rgba(0, 0, 0, .08));
+    pointer-events: none;
+}
+
+.progress-bar-primary {
+    background-color: #337ab7;
+}
+
+
+.material-switch>input[type="checkbox"] {
+    display: none;
+}
+
+.material-switch>label {
     cursor: pointer;
     height: 0px;
-    position: relative; 
-    width: 40px;  
+    position: relative;
+    width: 40px;
 }
 
-.material-switch > label::before {
+.material-switch>label::before {
     background: rgb(0, 0, 0);
     box-shadow: inset 0px 0px 10px rgba(0, 0, 0, 0.5);
     border-radius: 8px;
     content: '';
     height: 16px;
     margin-top: -8px;
-    position:absolute;
+    position: absolute;
     opacity: 0.3;
     transition: all 0.4s ease-in-out;
     width: 40px;
 }
-.material-switch > label::after {
+
+.material-switch>label::after {
     background: rgb(255, 255, 255);
     border-radius: 16px;
     box-shadow: 0px 0px 5px rgba(0, 0, 0, 0.3);
@@ -58,30 +391,284 @@
     transition: all 0.3s ease-in-out;
     width: 24px;
 }
-.material-switch > input[type="checkbox"]:checked + label::before {
+
+.material-switch>input[type="checkbox"]:checked+label::before {
     background: inherit;
     opacity: 0.5;
 }
-.material-switch > input[type="checkbox"]:checked + label::after {
+
+.material-switch>input[type="checkbox"]:checked+label::after {
     background: inherit;
     left: 20px;
 }
 
 .navbar-brand {
-    padding: 0px !important; /* firefox bug fix */
+    padding: 0px !important;
+    /* firefox bug fix */
     margin-left: 10px !important;
 }
+
 .navbar-brand>img {
     height: 100%;
     width: auto;
 }
-.encodingProgress{
+
+.encodingProgress {
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
+    margin-bottom: 0;
 }
-.downloadProgress{
+
+.downloadProgress {
     border-top-left-radius: 0;
     border-top-right-radius: 0;
+    height: 8px;
+    margin: 0;
+}
+
+.progress-group {
+    margin: 0;
+}
+
+/* Pre-processing stage (thumbnails/audio track extraction/etc.): the bar is
+   forced to 100% so the striped animation above is visible, and the "Preparing"
+   badge pulses so it still reads as live activity, not a frozen label. Opacity-
+   only, so it stays correct under both light and dark themes. */
+@keyframes enc-stage-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: .5; }
+}
+
+.encodingProgress.stage-pending .progress-completed .badge {
+    animation: enc-stage-pulse 1.4s ease-in-out infinite;
+}
+
+.queue-item {
+    margin-bottom: 12px;
+    box-shadow: var(--enc-shadow);
+    transition: box-shadow .2s ease, transform .2s ease;
+}
+
+.queue-item:hover {
+    box-shadow: var(--enc-shadow-hover);
+    transform: translateY(-2px);
+}
+
+.queue-item {
+    border-left: 4px solid #ccc;
+}
+
+.queue-item.queue-item-status-queue { border-left-color: #337ab7; }
+.queue-item.queue-item-status-encoding { border-left-color: #5bc0de; }
+.queue-item.queue-item-status-downloading { border-left-color: #f0ad4e; }
+.queue-item.queue-item-status-downloaded { border-left-color: #f7b731; }
+.queue-item.queue-item-status-transferring { border-left-color: #8e44ad; }
+.queue-item.queue-item-status-packing { border-left-color: #e67e22; }
+.queue-item.queue-item-status-fixing { border-left-color: #16a085; }
+.queue-item.queue-item-status-done { border-left-color: #5cb85c; }
+.queue-item.queue-item-status-error { border-left-color: #d9534f; }
+
+.queue-item-heading {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    row-gap: 6px;
+}
+
+.queue-item-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background-color: rgba(127, 127, 127, .12);
+    font-size: 12px;
+    margin-right: 8px;
+    flex: 0 0 auto;
+}
+
+/* Generic circular icon badge, reused outside the queue cards too (config panel
+   headings, the sign-in form legend) for a consistent icon treatment sitewide. */
+.icon-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background-color: rgba(127, 127, 127, .12);
+    font-size: 12px;
+    margin-right: 4px;
+    flex: 0 0 auto;
+}
+
+.queue-item-site {
+    font-weight: 600;
+    font-size: 13px;
+    max-width: 240px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-decoration: none;
+}
+
+.queue-item-site:hover,
+.queue-item-site:focus {
+    text-decoration: underline;
+}
+
+.queue-item-heading-spacer {
+    flex: 1 1 auto;
+}
+
+.queue-item-heading .label {
+    margin-left: 8px;
+}
+
+.queue-item-body {
+    padding: 14px 16px;
+}
+
+.queue-item-stage {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    margin-bottom: 10px;
+    padding: 6px 10px;
+    border-radius: var(--enc-radius-sm);
+    background-color: rgba(127, 127, 127, .08);
+}
+
+.queue-item-stage-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.queue-empty-state {
+    text-align: center;
+    opacity: .55;
+    padding: 60px 20px;
+}
+
+.queue-empty-state i {
+    display: block;
+    font-size: 3em;
+    margin-bottom: 12px;
+}
+
+.queue-summary {
+    margin-bottom: 15px;
+}
+
+.queue-summary .label {
+    font-size: 90%;
+    margin-right: 4px;
+    margin-bottom: 4px;
+    display: inline-block;
+}
+
+/* Queue Log (bootgrid) table cells were rendering everything on one
+   cramped line via <br>; stack them with real spacing instead. */
+#grid, #gridStreamer {
+    background-color: transparent;
+}
+
+#grid td, #gridStreamer td {
+    vertical-align: middle;
+    padding: 12px 10px;
+}
+
+#grid thead th, #gridStreamer thead th {
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: .04em;
+    background-color: rgba(127, 127, 127, .08);
+    white-space: nowrap;
+}
+
+.log-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+}
+
+.log-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.log-heading { margin-bottom: 20px; }
+.log-heading h2 { margin: 0 0 6px; font-size: 20px; font-weight: 600; }
+.log-heading p { margin: 0; }
+
+.log-toolbar, .log-footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px 18px;
+    margin: 16px 0;
+}
+.log-toolbar-actions { flex: 0 0 auto; }
+.log-toolbar-search { margin-left: auto; }
+.log-toolbar .dt-buttons,
+.log-toolbar .dataTables_length,
+.log-toolbar .dataTables_filter,
+.log-footer .dataTables_info,
+.log-footer .dataTables_paginate { float: none; padding: 0; margin: 0; text-align: left; }
+.log-toolbar label { display: flex; align-items: center; gap: 8px; margin: 0; }
+.log-toolbar .dataTables_filter input { margin: 0; max-width: 100%; }
+.log-toolbar .dt-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+.log-footer .pagination { margin: 0; }
+
+#grid.log-table { table-layout: fixed; width: 100%; }
+#grid.log-table thead th { padding: 12px 24px 12px 12px; }
+#grid.log-table th:nth-child(1) { width: 40%; }
+#grid.log-table th:nth-child(2) { width: 24%; }
+#grid.log-table th:nth-child(3) { width: 17%; }
+#grid.log-table th:nth-child(4) { width: 19%; }
+#grid.log-table td { padding: 20px 12px; vertical-align: top; text-align: left; white-space: normal; }
+.log-table .log-stack { gap: 10px; min-width: 0; }
+.log-title { font-size: 14px; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
+.log-metadata { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; overflow-wrap: anywhere; }
+.log-chip { display: inline-block; padding: 4px 8px; border: 1px solid rgba(127,127,127,.25); border-radius: var(--enc-radius-sm); font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+.log-status { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; white-space: normal; line-height: 1.4; }
+.log-eta { line-height: 1.6; }
+.log-eta strong { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.log-details { width: 100%; font-size: 12px; }
+.log-details summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.log-details summary::before { content: '\203A'; display: inline-block; margin-right: 6px; }
+.log-details[open] summary::before { transform: rotate(90deg); }
+.log-details summary::marker { content: ''; }
+.log-details summary::-webkit-details-marker { display: none; }
+.log-stage { line-height: 1.6; overflow-wrap: anywhere; }
+.log-details summary:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.log-observation { margin-top: 6px; padding: 10px; border-left: 2px solid currentColor; background: rgba(127,127,127,.07); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; max-height: 16em; overflow-y: auto; }
+.log-dates { margin: 0; font-size: 12px; font-variant-numeric: tabular-nums; }
+.log-dates dt { font-weight: 500; margin-bottom: 3px; }
+.log-dates dd { display: flex; flex-direction: column; gap: 2px; margin-bottom: 12px; }
+.log-dates dd:last-child { margin-bottom: 0; }
+.log-dates dd span, .log-dates dd small { white-space: nowrap; }
+.log-actions { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+.log-actions .btn { display: inline-flex; align-items: center; justify-content: flex-start; gap: 8px; margin: 0; white-space: normal; text-align: left; }
+.log-actions .glyphicon { flex: 0 0 14px; }
+
+@media (max-width: 1199px) {
+    #grid.log-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+    #grid.log-table, #grid.log-table tbody { display: block; width: 100%; }
+    #grid.log-table tr { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 16px; padding: 20px 0; border-top: 1px solid rgba(127,127,127,.25); }
+    #grid.log-table td { display: block; padding: 0; border: 0; min-width: 0; }
+    #grid.log-table td:first-child, #grid.log-table td:last-child { grid-column: 1 / -1; }
+    .log-actions { flex-direction: row; flex-wrap: wrap; }
+    .log-toolbar-search { margin-left: 0; flex: 1 1 100%; }
+    .log-toolbar .dataTables_filter input { flex: 1; width: 100%; min-width: 0; }
 }
 
 #config .checkboxes label {
@@ -90,18 +677,287 @@
     white-space: nowrap;
     line-height: normal;
 }
+
 #config .checkboxes input {
     vertical-align: middle;
     margin: 0;
 }
+
 #config .checkboxes label span {
     vertical-align: middle;
     margin-left: 4px;
 }
+
 #config small {
     line-height: normal;
 }
 
 body {
     padding-top: 50px;
+}
+
+/* Streamer themes load after this file and also define Bootstrap button groups. */
+.btn-group.upload-action-group {
+    display: flex;
+    width: 100%;
+}
+
+.fileupload-buttonbar .fileinput-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+}
+
+.btn-group.upload-action-group > .upload-action {
+    display: inline-flex;
+    flex: 1 1 0;
+    float: none;
+    width: auto;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-width: 0;
+    min-height: 42px;
+    padding: 8px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.upload-action-group .upload-action i {
+    width: 16px;
+    text-align: center;
+}
+
+.upload-preferences {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.upload-preference {
+    display: flex;
+    flex: 1 1 0;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    min-height: 46px;
+    margin: 0 0 5px;
+    padding: 8px 9px;
+    border: 1px solid rgba(127, 127, 127, .28);
+    border-radius: var(--enc-radius-sm);
+    background-color: rgba(127, 127, 127, .06);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.25;
+}
+
+.upload-preference input[type="checkbox"] {
+    display: inline-block;
+    flex: 0 0 auto;
+    margin: 0;
+}
+
+.upload-preference-icon {
+    flex: 0 0 16px;
+    width: 16px;
+    text-align: center;
+    opacity: .7;
+}
+
+.upload-preference-text {
+    min-width: 0;
+}
+
+.available-resolutions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 7px 10px;
+    min-height: 32px;
+}
+
+.available-resolutions-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.2;
+    opacity: .75;
+}
+
+.availableResolutionsLabels {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-width: 0;
+    overflow: visible;
+    line-height: 1;
+}
+
+.availableResolutionsLabels .label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin: 0;
+    font-size: 11px;
+    line-height: 1;
+    vertical-align: middle;
+}
+
+.availableResolutionsLabels > .label {
+    justify-content: center;
+    height: 24px;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+.availableResolutionsLabels > .label > .label {
+    height: 16px;
+    min-height: 0;
+    padding: 0 5px;
+    font-size: 9px;
+    line-height: 1;
+}
+.navbar-right li{
+    margin-right: 10px;
+}
+
+.single-line-ellipsis {
+    white-space: nowrap;  /* Keep text in a single line */
+    overflow: hidden;     /* Hide overflow text */
+    text-overflow: ellipsis;  /* Show ellipsis for overflow text */
+}
+
+.label-priority {
+    background-color: #777;
+    color: white;
+    margin-left: 10px;
+}
+
+.label-status {
+    margin-left: 10px;
+}
+
+.label-status-error {
+    background-color: #d9534f;
+}
+
+.label-status-done {
+    background-color: #5cb85c;
+}
+
+.label-status-queue {
+    background-color: #337ab7;
+}
+
+.label-status-encoding {
+    background-color: #5bc0de;
+}
+
+.label-status-downloading {
+    background-color: #f0ad4e;
+}
+
+.label-status-downloaded {
+    background-color: #f7b731;
+}
+
+.label-status-transferring {
+    background-color: #8e44ad;
+}
+
+.label-status-packing {
+    background-color: #e67e22;
+}
+
+.label-status-fixing {
+    background-color: #16a085;
+}
+
+/* Live encoding/download stats (fps, bitrate, speed, size, ETA) shown under the
+   progress bars — additive info panel, hidden until it actually has data. */
+.queue-item-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 16px;
+    padding: 6px 12px;
+    margin: 10px -16px -14px;
+    border-top: 1px solid rgba(127, 127, 127, .2);
+    border-bottom-left-radius: var(--enc-radius);
+    border-bottom-right-radius: var(--enc-radius);
+    background-color: rgba(127, 127, 127, .05);
+    font-size: 12px;
+}
+
+.queue-item-meta .meta-chip {
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.queue-item-meta .meta-chip i {
+    width: 14px;
+    text-align: center;
+    opacity: .55;
+}
+
+.queue-item-meta .meta-value {
+    font-weight: 600;
+}
+
+@media (max-width: 767px) {
+    .nav-tabs-icons > li > a {
+        gap: 5px;
+        min-height: 50px;
+        padding: 7px 5px;
+        font-size: 12px;
+    }
+
+    .nav-tabs-icons > li > a i {
+        flex-basis: 15px;
+        width: 15px;
+        font-size: 14px;
+    }
+
+    .upload-preference {
+        gap: 6px;
+        padding: 7px;
+        font-size: 12px;
+    }
+
+    #mainTabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 2px 8px;
+    }
+
+    #mainTabs > li {
+        float: none;
+        flex: 1 1 calc(50% - 4px);
+        min-width: 0;
+        margin: 0;
+    }
+
+    #mainTabs > li > a {
+        width: 100%;
+        min-height: 40px;
+        margin: 0;
+        padding: 8px 9px;
+        white-space: normal;
+    }
+
+    .queue-item-meta {
+        font-size: 11px;
+        gap: 4px 10px;
+    }
 }
